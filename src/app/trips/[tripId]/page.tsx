@@ -47,7 +47,7 @@ export default async function TripPage({ params }: Props) {
       initialStops={stops ?? []}
       members={(members ?? []) as any}
       currentUserId={user.id}
-      role={membership.role}
+      role={membership.role as import('@/types/database').TripRole}
     />
   )
 }
