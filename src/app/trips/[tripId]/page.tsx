@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import TripClient from '@/components/TripClient'
-import type { TripRole, TripMemberWithProfile } from '@/types/database'
+import type { TripRole, TripMemberWithProfile, TripRouteWithCreator } from '@/types/database'
 
 interface Props {
   params: Promise<{ tripId: string }>
@@ -30,9 +30,17 @@ export default async function TripPage({ params }: Props) {
 
   if (!trip) notFound()
 
+  // All stops for the trip — used by FuelTab; StopsTab fetches per-route separately
   const { data: stops } = await supabase
     .from('stops')
     .select('*')
+    .eq('trip_id', tripId)
+    .order('order_index', { ascending: true })
+
+  // Routes with creator profile for the StopsTab tabs UI
+  const { data: routes } = await supabase
+    .from('routes')
+    .select('*, creator:profiles(*)')
     .eq('trip_id', tripId)
     .order('order_index', { ascending: true })
 
@@ -44,6 +52,7 @@ export default async function TripPage({ params }: Props) {
   return (
     <TripClient
       trip={trip}
+      initialRoutes={(routes ?? []) as TripRouteWithCreator[]}
       initialStops={stops ?? []}
       members={(members ?? []) as TripMemberWithProfile[]}
       currentUserId={user.id}

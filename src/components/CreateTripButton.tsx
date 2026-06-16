@@ -24,33 +24,24 @@ export default function CreateTripButton({ userId, primary }: Props) {
     setError(null)
     setLoading(true)
 
-    // Generate UUID client-side so we can redirect immediately without
-    // needing RETURNING — avoids RLS issue where SELECT policy on trips
-    // filters out the new row before trip_members is populated.
+    // Generate UUIDs client-side to avoid RETURNING needing SELECT RLS
     const tripId = crypto.randomUUID()
 
     const { error: tripErr } = await supabase
       .from('trips')
       .insert({ id: tripId, title, description: description || null, owner_id: userId })
 
-    if (tripErr) {
-      setError(tripErr.message)
-      setLoading(false)
-      return
-    }
+    if (tripErr) { setError(tripErr.message); setLoading(false); return }
 
-    // Add self as owner in trip_members
     const { error: memberErr } = await supabase.from('trip_members').insert({
-      trip_id: tripId,
-      user_id: userId,
-      role: 'owner',
+      trip_id: tripId, user_id: userId, role: 'owner',
     })
+    if (memberErr) { setError(memberErr.message); setLoading(false); return }
 
-    if (memberErr) {
-      setError(memberErr.message)
-      setLoading(false)
-      return
-    }
+    // Create a default route so the StopsTab is ready immediately
+    await supabase.from('routes').insert({
+      trip_id: tripId, name: 'Route 1', created_by: userId, order_index: 0,
+    })
 
     setLoading(false)
     setOpen(false)

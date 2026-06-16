@@ -188,6 +188,48 @@ export type Database = {
         }
         Relationships: []
       }
+      routes: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          order_index: number
+          trip_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          order_index?: number
+          trip_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          order_index?: number
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "routes_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "routes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stop_attachments: {
         Row: {
           created_at: string
@@ -242,6 +284,8 @@ export type Database = {
           name: string
           notes: string | null
           order_index: number
+          route_id: string | null
+          route_notes: string | null
           trip_id: string
           updated_at: string
         }
@@ -254,6 +298,8 @@ export type Database = {
           name: string
           notes?: string | null
           order_index?: number
+          route_id?: string | null
+          route_notes?: string | null
           trip_id: string
           updated_at?: string
         }
@@ -266,10 +312,19 @@ export type Database = {
           name?: string
           notes?: string | null
           order_index?: number
+          route_id?: string | null
+          route_notes?: string | null
           trip_id?: string
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "stops_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "stops_trip_id_fkey"
             columns: ["trip_id"]
@@ -507,4 +562,9 @@ export type FuelUnit = 'L' | 'gal' | 'kWh'
 
 export type TripMemberWithProfile = Tables<'trip_members'> & {
   profile: Profile | null
+}
+
+export type TripRoute = Tables<'routes'>
+export type TripRouteWithCreator = TripRoute & {
+  creator: Profile | null
 }

@@ -22,6 +22,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 |---|---|---|
 | `master.sql` | Full idempotent schema — clean project start | Fresh DB only |
 | `run1.sql` | Storage bucket + storage RLS | Existing DB missing storage setup |
+| `run2.sql` | `route_notes` on stops · trip_members RLS recursion fix · `routes` table + RLS · `route_id` FK on stops | Existing DB after run1 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -82,8 +83,10 @@ src/
 │   ├── MembersTab.tsx         Member management
 │   ├── map/RouteMap.tsx       Leaflet map (dynamic import, no SSR)
 │   └── stops/
-│       ├── StopsTab.tsx       Stop list + map + search
-│       └── StopPanel.tsx      Per-stop notes + attachments
+│       ├── StopsTab.tsx       Route tabs + stop list + map
+│       ├── StopPanel.tsx      Per-stop notes + attachments
+│       ├── RouteSegmentPanel.tsx  Leg notes (stop N → N+1)
+│       └── CopyRouteModal.tsx Copy route to same or another trip
 ├── lib/
 │   ├── nominatim.ts           Geocode + reverse geocode + OSRM route
 │   └── supabase/
@@ -94,7 +97,8 @@ src/
 └── types/database.ts         All DB types + convenience aliases
 supabase/
 ├── master.sql                 Full schema — use for fresh DB setup
-└── run1.sql                   Storage bucket — run on existing DB if not yet applied
+├── run1.sql                   Storage bucket — run on existing DB if not yet applied
+└── run2.sql                   Routes table + stops.route_notes/route_id — run after run1
 ```
 
 ---
@@ -106,7 +110,8 @@ supabase/
 | `profiles` | id (FK auth.users), display_name, avatar_url |
 | `trips` | id, title, description, owner_id |
 | `trip_members` | trip_id, user_id, role (owner/editor/viewer) |
-| `stops` | trip_id, order_index, name, address, lat, lng, notes |
+| `routes` | trip_id, name, created_by (→ profiles), order_index |
+| `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
 | `fuel_logs` | trip_id, stop_id?, fuel_type, amount, unit, cost, currency, odometer |
 | `costs` | trip_id, stop_id?, category, amount, currency, paid_by |

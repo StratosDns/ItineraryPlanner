@@ -49,16 +49,29 @@ CREATE TABLE IF NOT EXISTS public.trip_members (
   UNIQUE (trip_id, user_id)
 );
 
+
+-- ROUTES (named segments within a trip) ---------------------------------------
+CREATE TABLE IF NOT EXISTS public.routes (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id     UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL DEFAULT 'Route',
+  created_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  order_index INTEGER NOT NULL DEFAULT 0
+);
+
 -- STOPS -----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.stops (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   trip_id     UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  route_id    UUID REFERENCES public.routes(id) ON DELETE CASCADE,
   order_index INTEGER NOT NULL DEFAULT 0,
   name        TEXT NOT NULL,
   address     TEXT,
   lat         DOUBLE PRECISION,
   lng         DOUBLE PRECISION,
   notes       TEXT,
+  route_notes  TEXT,        -- notes for the leg FROM this stop to the next
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -130,7 +143,9 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 -- =============================================================================
 CREATE INDEX IF NOT EXISTS idx_trip_members_trip  ON public.trip_members(trip_id);
 CREATE INDEX IF NOT EXISTS idx_trip_members_user  ON public.trip_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_routes_trip        ON public.routes(trip_id);
 CREATE INDEX IF NOT EXISTS idx_stops_trip         ON public.stops(trip_id);
+CREATE INDEX IF NOT EXISTS idx_stops_route        ON public.stops(route_id);
 CREATE INDEX IF NOT EXISTS idx_stops_order        ON public.stops(trip_id, order_index);
 CREATE INDEX IF NOT EXISTS idx_stop_attachments   ON public.stop_attachments(stop_id);
 CREATE INDEX IF NOT EXISTS idx_fuel_logs_trip     ON public.fuel_logs(trip_id);
@@ -183,6 +198,7 @@ $$;
 -- ROW LEVEL SECURITY
 -- =============================================================================
 ALTER TABLE public.trips            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.routes           ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.trip_members     ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stops            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.stop_attachments ENABLE ROW LEVEL SECURITY;
@@ -245,6 +261,27 @@ DROP POLICY IF EXISTS "Owner can remove members" ON public.trip_members;
 CREATE POLICY "Owner can remove members"
   ON public.trip_members FOR DELETE TO authenticated
   USING (public.my_trip_role(trip_id) = 'owner' OR user_id = auth.uid());
+
+-- ROUTES --------------------------------------------------------------------
+DROP POLICY IF EXISTS "Members can read routes" ON public.routes;
+CREATE POLICY "Members can read routes"
+  ON public.routes FOR SELECT TO authenticated
+  USING (public.my_trip_role(trip_id) IN ('owner', 'editor', 'viewer'));
+
+DROP POLICY IF EXISTS "Editors+ can insert routes" ON public.routes;
+CREATE POLICY "Editors+ can insert routes"
+  ON public.routes FOR INSERT TO authenticated
+  WITH CHECK (public.my_trip_role(trip_id) IN ('owner', 'editor'));
+
+DROP POLICY IF EXISTS "Editors+ can update routes" ON public.routes;
+CREATE POLICY "Editors+ can update routes"
+  ON public.routes FOR UPDATE TO authenticated
+  USING (public.my_trip_role(trip_id) IN ('owner', 'editor'));
+
+DROP POLICY IF EXISTS "Editors+ can delete routes" ON public.routes;
+CREATE POLICY "Editors+ can delete routes"
+  ON public.routes FOR DELETE TO authenticated
+  USING (public.my_trip_role(trip_id) IN ('owner', 'editor'));
 
 -- STOPS -----------------------------------------------------------------------
 DROP POLICY IF EXISTS "Members can read stops" ON public.stops;
