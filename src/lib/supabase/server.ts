@@ -1,8 +1,12 @@
 import { createServerClient } from '@supabase/ssr'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '@/types/database'
 
-export async function createClient() {
+// Explicit return type required: createServerClient<Database> loses its generic
+// under Next.js 16 strict TypeScript, causing all .from() calls to infer `never`.
+// The cast restores correct inference for every server component that calls this.
+export async function createClient(): Promise<SupabaseClient<Database>> {
   const cookieStore = await cookies()
 
   return createServerClient<Database>(
@@ -19,11 +23,11 @@ export async function createClient() {
               cookieStore.set(name, value, options)
             )
           } catch {
-            // Called from a Server Component — cookies can't be set here.
-            // Middleware handles session refresh instead.
+            // Server Component — cookies are read-only; middleware refreshes session.
           }
         },
       },
     }
-  )
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ) as any as SupabaseClient<Database>
 }
