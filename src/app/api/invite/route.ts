@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { Database, TripRole } from '@/types/database'
+import { Database } from '@/types/database'
+
+type TripRole = 'editor' | 'viewer'
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
