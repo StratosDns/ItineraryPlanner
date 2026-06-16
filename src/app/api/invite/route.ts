@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createClient as createAdminClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database, TripRole } from '@/types/database'
 
@@ -32,12 +32,14 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Use admin client for all DB work (bypasses RLS, needed for cross-user lookups).
-  // createAdminClient<Database> loses its generic in this context — cast explicitly.
+  // Admin client bypasses RLS for cross-user lookups.
+  // @supabase/supabase-js createClient<Database> loses its generic in Next.js 16 strict TS
+  // regardless of cast strategy — use `any` to unblock; runtime behaviour is correct.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
-  ) as SupabaseClient<Database>
+  ) as any
 
   // Verify requester is owner
   const { data: membership } = await admin
@@ -47,7 +49,7 @@ export async function POST(request: NextRequest) {
     .eq('user_id', user.id)
     .single()
 
-  if (membership?.role !== 'owner') {
+  if ((membership as { role: string } | null)?.role !== 'owner') {
     return NextResponse.json({ error: 'Only the owner can invite members' }, { status: 403 })
   }
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
   const { data: { users }, error: listErr } = await admin.auth.admin.listUsers()
   if (listErr) return NextResponse.json({ error: 'Failed to look up user' }, { status: 500 })
 
-  const target = users.find(u => u.email === email)
+  const target = (users as { id: string; email?: string }[]).find(u => u.email === email)
   if (!target) {
     return NextResponse.json({
       error: `No account found for ${email}. They must register first.`,
@@ -81,7 +83,7 @@ export async function POST(request: NextRequest) {
     .select('*, profile:profiles(*)')
     .single()
 
-  if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 })
+  if (insertErr) return NextResponse.json({ error: (insertErr as { message: string }).message }, { status: 500 })
 
   return NextResponse.json({ member })
 }

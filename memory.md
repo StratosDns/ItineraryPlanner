@@ -132,7 +132,7 @@ supabase/
 - **ESLint config**: `create-next-app@16.x` generates a flat config using `defineConfig` and named imports from `eslint-config-next`. Imports must use `.js` extension (`core-web-vitals.js`, `typescript.js`) for Node ESM resolution — omitting `.js` causes a build failure on Vercel.
 - **Supabase `.from()` inferring `never` — two distinct causes**:
   1. **`database.ts` type bug (affects `@supabase/ssr` clients)**: `Views: Record<string, never>` made every string a valid view name (`keyof Record<string, never>` = `string`). Supabase's `.from()` has overloads for Tables and Views — with Views matching every string and returning `never`, all `.from()` calls collapsed to `never`. **Fix**: use `{ [_ in never]: never }` for empty Views/Enums. Applied in `database.ts`. Never use `Record<string, never>` for empty Supabase schema sections.
-  2. **Admin client generic loss (affects `@supabase/supabase-js` direct `createClient`)**: `createAdminClient<Database>()` called directly (not through `@supabase/ssr`) loses its generic in Next.js 16 strict TS. **Fix**: call without the generic then cast — `createAdminClient(...) as SupabaseClient<Database>`. Applied in `api/invite/route.ts`. Import `SupabaseClient` from `@supabase/supabase-js`.
+  2. **Admin client generic loss (affects `@supabase/supabase-js` direct `createClient`)**: `createAdminClient<Database>()` called directly (not through `@supabase/ssr`) loses its generic in Next.js 16 strict TS. `as SupabaseClient<Database>` cast does not propagate through the query builder chain either. **Fix**: cast the client `as any`, then manually type-assert individual query results where needed. Applied in `api/invite/route.ts`. This is scoped to a single small file; runtime is unaffected.
 
 ---
 

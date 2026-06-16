@@ -1,1 +1,0 @@
--- DEPRECATED. Use supabase/master.sql or supabase/runN.sql instead.
