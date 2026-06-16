@@ -16,18 +16,18 @@
 
 ## Supabase Scripts
 
-| File | Purpose | Run order |
-|---|---|---|
-| `scripts/run1.sql` | uuid-ossp extension | 1 |
-| `scripts/run2.sql` | All table definitions | 2 |
-| `scripts/run3.sql` | Performance indexes | 3 |
-| `scripts/run4.sql` | handle_updated_at, handle_new_user, my_trip_role | 4 |
-| `scripts/run5.sql` | All RLS policies | 5 |
-| `scripts/run6.sql` | `attachments` bucket + storage policies | 6 |
-| `master.sql` | Runs all scripts in order via `\i` (psql) | — |
+All SQL files live directly in `supabase/` — no subdirectories.
 
-**Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers only, no descriptive suffix.  
-**Adding a new script:** Create `scripts/run(N+1).sql` → add `\i` entry in `master.sql` → add row to this table → update `master.sql` script index comment.
+| File | Purpose | When to run |
+|---|---|---|
+| `master.sql` | Full idempotent schema — clean project start | Fresh DB only |
+| `run1.sql` | Storage bucket + storage RLS | Existing DB missing storage setup |
+
+**Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
+**`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
+**Adding a future change:** Create `supabase/run(N+1).sql` → append same SQL to `master.sql` → add row to this table.
+
+> `supabase/scripts/` and `supabase/schema.sql` are DEPRECATED — delete them with `git rm -r supabase/scripts/ supabase/schema.sql`.
 
 ---
 
@@ -93,14 +93,8 @@ src/
 ├── middleware.ts              Route protection
 └── types/database.ts         All DB types + convenience aliases
 supabase/
-├── master.sql                 Entry point — \i's all run*.sql in order
-└── scripts/
-    ├── run1.sql               Extensions
-    ├── run2.sql               Tables
-    ├── run3.sql               Indexes
-    ├── run4.sql               Functions + triggers
-    ├── run5.sql               RLS policies
-    └── run6.sql               Storage bucket + policies
+├── master.sql                 Full schema — use for fresh DB setup
+└── run1.sql                   Storage bucket — run on existing DB if not yet applied
 ```
 
 ---
@@ -136,7 +130,7 @@ supabase/
 
 - **Next.js version**: Originally set to 15.3.3 (had CVE-2025-66478). Updated to 16.2.9 which fixes both the CVE and aligns with the eslint-config-next version (both must match).
 - **ESLint config**: `create-next-app@16.x` generates a flat config using `defineConfig` and named imports from `eslint-config-next`. Imports must use `.js` extension (`core-web-vitals.js`, `typescript.js`) for Node ESM resolution — omitting `.js` causes a build failure on Vercel.
-- **Invite route TypeScript**: `@supabase/ssr`'s `createServerClient` loses its `Database` generic in API routes under certain cookie configurations, causing queries to type `data` as `never`. Fixed by using the admin client for all DB operations in the invite route and casting with `as { role: TripRole } | null`.
+- **Invite route TypeScript**: Both `createServerClient` and `createAdminClient<Database>()` lose their `Database` generic in Next.js 16 strict TypeScript, causing `.from()` to infer `never`. Fix: call `createAdminClient()` without the generic, then cast the result: `createAdminClient(...) as SupabaseClient<Database>`. This restores correct types on all downstream `.from()` calls. Import `SupabaseClient` from `@supabase/supabase-js`.
 
 ---
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createClient as createAdminClient } from '@supabase/supabase-js'
+import { createClient as createAdminClient, SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database, TripRole } from '@/types/database'
 
@@ -32,11 +32,13 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Use admin client for all DB work — avoids generic inference issues with createServerClient
-  const admin = createAdminClient<Database>(
+  // Use admin client for all DB work.
+  // Cast to SupabaseClient<Database> explicitly — createAdminClient<Database>() loses its
+  // generic in Next.js 16 strict TypeScript, causing .from() to infer `never`.
+  const admin = createAdminClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
+  ) as SupabaseClient<Database>
 
   // Verify requester is owner
   const { data: membership } = await admin
