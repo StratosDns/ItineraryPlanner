@@ -1,8 +1,11 @@
 -- =============================================================================
--- ITINERARY PLANNER — Supabase Schema + RLS
+-- ITINERARY PLANNER — Supabase Schema + RLS  [LEGACY COMBINED FILE]
 -- =============================================================================
--- Run this in Supabase SQL Editor (https://supabase.com/dashboard → SQL Editor)
--- Run once. Re-running is safe due to IF NOT EXISTS / OR REPLACE guards.
+-- ⚠ This file is kept as a convenience reference but is NO LONGER THE SOURCE
+--   OF TRUTH. The authoritative scripts are in supabase/scripts/ and are
+--   orchestrated by supabase/master.sql.
+--
+-- For first-time setup use: supabase/master.sql
 -- =============================================================================
 
 -- Enable UUID extension (already on by default in Supabase)

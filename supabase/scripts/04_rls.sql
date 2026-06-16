@@ -1,0 +1,2 @@
+-- DEPRECATED: this file has been renamed. Use run instead.
+-- See supabase/master.sql

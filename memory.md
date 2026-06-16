@@ -6,6 +6,31 @@
 
 ---
 
+## Universal Rules (enforce in every session)
+
+1. **Supabase scripts** — Every new SQL script must follow the standard header format (see `supabase/scripts/` for examples) documenting: PURPOSE, WHEN TO RUN, DEPENDS ON, and any notable design decisions. After adding a script, update `supabase/master.sql` to include it at the correct position and update the script index in `master.sql` and in this file.
+
+2. **Master script** — `supabase/master.sql` is the single entry point for a full DB setup. It must always be in sync with the individual scripts in `supabase/scripts/`. Never add a script without updating master.
+
+---
+
+## Supabase Scripts
+
+| File | Purpose | Run order |
+|---|---|---|
+| `scripts/run1.sql` | uuid-ossp extension | 1 |
+| `scripts/run2.sql` | All table definitions | 2 |
+| `scripts/run3.sql` | Performance indexes | 3 |
+| `scripts/run4.sql` | handle_updated_at, handle_new_user, my_trip_role | 4 |
+| `scripts/run5.sql` | All RLS policies | 5 |
+| `scripts/run6.sql` | `attachments` bucket + storage policies | 6 |
+| `master.sql` | Runs all scripts in order via `\i` (psql) | — |
+
+**Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers only, no descriptive suffix.  
+**Adding a new script:** Create `scripts/run(N+1).sql` → add `\i` entry in `master.sql` → add row to this table → update `master.sql` script index comment.
+
+---
+
 ## Project Overview
 
 **App name:** RouteForge  
@@ -68,7 +93,14 @@ src/
 ├── middleware.ts              Route protection
 └── types/database.ts         All DB types + convenience aliases
 supabase/
-└── schema.sql                 Full schema + RLS (run in Supabase SQL Editor)
+├── master.sql                 Entry point — \i's all run*.sql in order
+└── scripts/
+    ├── run1.sql               Extensions
+    ├── run2.sql               Tables
+    ├── run3.sql               Indexes
+    ├── run4.sql               Functions + triggers
+    ├── run5.sql               RLS policies
+    └── run6.sql               Storage bucket + policies
 ```
 
 ---
