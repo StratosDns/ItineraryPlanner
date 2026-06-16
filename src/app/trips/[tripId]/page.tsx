@@ -53,7 +53,6 @@ export default async function TripPage({ params }: Props) {
     <TripClient
       trip={trip}
       initialRoutes={(routes ?? []) as TripRouteWithCreator[]}
-      initialStops={stops ?? []}
       members={(members ?? []) as TripMemberWithProfile[]}
       currentUserId={user.id}
       role={membership.role as TripRole}

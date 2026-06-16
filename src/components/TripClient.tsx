@@ -2,32 +2,29 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Map, Fuel, DollarSign, Users } from 'lucide-react'
-import { Trip, Stop, TripMemberWithProfile, TripRole, TripRouteWithCreator } from '@/types/database'
+import { ArrowLeft, Map, DollarSign, Users } from 'lucide-react'
+import { Trip, TripMemberWithProfile, TripRole, TripRouteWithCreator } from '@/types/database'
 import StopsTab from '@/components/stops/StopsTab'
-import FuelTab from '@/components/FuelTab'
 import CostsTab from '@/components/CostsTab'
 import MembersTab from '@/components/MembersTab'
 
 interface Props {
   trip: Trip
   initialRoutes: TripRouteWithCreator[]
-  initialStops: Stop[]
   members: TripMemberWithProfile[]
   currentUserId: string
   role: TripRole
 }
 
-type Tab = 'route' | 'fuel' | 'costs' | 'members'
+type Tab = 'route' | 'costs' | 'members'
 
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: 'route',   label: 'Route',   icon: Map },
-  { id: 'fuel',    label: 'Fuel',    icon: Fuel },
   { id: 'costs',   label: 'Costs',   icon: DollarSign },
   { id: 'members', label: 'Members', icon: Users },
 ]
 
-export default function TripClient({ trip, initialRoutes, initialStops, members, currentUserId, role }: Props) {
+export default function TripClient({ trip, initialRoutes, members, currentUserId, role }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('route')
   const canEdit = role === 'owner' || role === 'editor'
 
@@ -81,14 +78,6 @@ export default function TripClient({ trip, initialRoutes, initialStops, members,
             initialRoutes={initialRoutes}
             canEdit={canEdit}
             currentUserId={currentUserId}
-          />
-        )}
-        {activeTab === 'fuel' && (
-          <FuelTab
-            tripId={trip.id}
-            stops={initialStops}
-            currentUserId={currentUserId}
-            canEdit={canEdit}
           />
         )}
         {activeTab === 'costs' && (

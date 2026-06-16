@@ -120,24 +120,24 @@ function AddStopForm({ onAdd, onCancel }: {
   }
 
   return (
-    <div className="border border-blue-200 bg-blue-50 rounded-xl p-3 space-y-2">
-      <div className="flex gap-2">
+    <div className="border border-blue-200 bg-blue-50 rounded-xl p-2 space-y-2">
+      <div className="flex gap-1.5">
         <input
           autoFocus
           value={query}
           onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && search()}
           placeholder="Search location..."
-          className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+          className="flex-1 min-w-0 px-2.5 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
         />
         <button
           onClick={search}
           disabled={searching}
-          className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60"
+          className="shrink-0 px-2.5 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-60"
         >
           {searching ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
         </button>
-        <button onClick={onCancel} className="px-3 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50">
+        <button onClick={onCancel} className="shrink-0 px-2 py-1.5 border border-gray-300 rounded-lg hover:bg-gray-50">
           <X className="w-4 h-4 text-gray-500" />
         </button>
       </div>
@@ -174,7 +174,6 @@ function CreatorAvatar({ name, url }: { name: string | null; url: string | null 
   )
 }
 
-
 // ── Note color constants ──────────────────────────────────────────────────────
 const NOTE_COLOR_OPTIONS: { value: NoteColor; bg: string; ring: string }[] = [
   { value: 'yellow', bg: 'bg-yellow-200', ring: 'ring-yellow-500' },
@@ -183,7 +182,7 @@ const NOTE_COLOR_OPTIONS: { value: NoteColor; bg: string; ring: string }[] = [
   { value: 'blue',   bg: 'bg-blue-200',   ring: 'ring-blue-500'  },
 ]
 
-// ── Inline note edit popup ─────────────────────────────────────────────────────
+// ── Inline note edit popup ────────────────────────────────────────────────────
 function NoteEditPopup({
   note, x, y, canEdit, onContentChange, onColorChange, onClose, onDelete,
 }: {
@@ -198,13 +197,13 @@ function NoteEditPopup({
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
-  // Clamp position so popup doesn't go off-screen
+  // Clamp position so popup stays on-screen
   const popupW = 220
   const popupH = 180
   const left = Math.min(Math.max(x - popupW / 2, 8), window.innerWidth  - popupW - 8)
   const top  = Math.min(Math.max(y - popupH - 14, 8), window.innerHeight - popupH - 8)
 
-  // Close on click outside
+  // Close on outside click or Escape
   useEffect(() => {
     function handle(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose()
@@ -286,15 +285,14 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
   const [loadingStops, setLoadingStops] = useState(false)
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null)
   const [routeMenuId, setRouteMenuId] = useState<string | null>(null)
+  const [routeMenuPos, setRouteMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [copyTarget, setCopyTarget] = useState<TripRoute | null>(null)
   const [creatingRoute, setCreatingRoute] = useState(false)
 
   // Note state
   const [mapNotes, setMapNotes] = useState<MapNote[]>([])
   const [placingNote, setPlacingNote] = useState(false)
-  const [editingNote, setEditingNote] = useState<{
-    note: MapNote; x: number; y: number
-  } | null>(null)
+  const [editingNote, setEditingNote] = useState<{ note: MapNote; x: number; y: number } | null>(null)
   const editNoteContentRef = useRef('')
   const editNoteColorRef   = useRef<NoteColor>('yellow')
   const editNoteTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -313,7 +311,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
   const totalDistance = segmentDistances.reduce((s, d) => s + d, 0)
 
-  // Load stops whenever the active route changes
+  // Load stops + notes whenever active route changes
   useEffect(() => {
     if (!activeRouteId) { setStops([]); return }
     setLoadingStops(true)
@@ -330,13 +328,13 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
       setMapNotes(notesRes.data ?? [])
       setLoadingStops(false)
     })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRouteId])
 
   // Close route menu on outside click
   useEffect(() => {
     if (!routeMenuId) return
-    function handle() { setRouteMenuId(null) }
+    function handle() { setRouteMenuId(null); setRouteMenuPos(null) }
     document.addEventListener('click', handle)
     return () => document.removeEventListener('click', handle)
   }, [routeMenuId])
@@ -441,7 +439,6 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setStops(prev => prev.map(s => s.id === id ? { ...s, route_notes } : s))
   }, [])
 
-
   // ── Note CRUD ───────────────────────────────────────────────────────────────
   async function createNote(lat: number, lng: number) {
     if (!activeRouteId) return
@@ -453,7 +450,6 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     if (!error && data) {
       setMapNotes(prev => [...prev, data])
       setPlacingNote(false)
-      // Open edit popup centered on screen
       setEditingNote({ note: data, x: window.innerWidth / 2, y: window.innerHeight / 2 })
       editNoteContentRef.current = ''
       editNoteColorRef.current = 'yellow'
@@ -492,33 +488,56 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setEditingNote(null)
   }
 
+  async function moveNote(id: string, lat: number, lng: number) {
+    await supabase.from('map_notes').update({ lat, lng }).eq('id', id)
+    setMapNotes(prev => prev.map(n => n.id === id ? { ...n, lat, lng } : n))
+  }
+
   // ── Copy route callback ─────────────────────────────────────────────────────
-  function handleCopied(
-    newRoute: TripRouteWithCreator | null,
-    newStops: Stop[],
-    targetTripId: string
-  ) {
+  function handleCopied(newRoute: TripRouteWithCreator | null, newStops: Stop[], targetTripId: string) {
     if (newRoute && targetTripId === tripId) {
-      // Copy was to this trip — add tab and switch to it (stops load via useEffect)
       setRoutes(prev => [...prev, newRoute])
       setActiveRouteId(newRoute.id)
     }
-    // If copied to another trip, user just sees the modal close
     setCopyTarget(null)
   }
 
   const segFrom = panelSegment != null ? stops[panelSegment.index] : null
   const segTo   = panelSegment != null ? stops[panelSegment.index + 1] : null
 
-  const activeRoute = routes.find(r => r.id === activeRouteId)
+  const activeRoute     = routes.find(r => r.id === activeRouteId)
+  const activeMenuRoute = routeMenuId ? routes.find(r => r.id === routeMenuId) : undefined
+
+  // ── Handlers extracted to avoid ternary->JSX confusion in attributes ────────
+  function handleNoteContentChange(content: string) {
+    if (!editingNote) return
+    editNoteContentRef.current = content
+    setEditingNote(prev => { if (!prev) return null; return { ...prev, note: { ...prev.note, content } } })
+    setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, content } : n))
+    scheduleNoteSave(editingNote.note.id, content, editNoteColorRef.current)
+  }
+
+  function handleNoteColorChange(color: NoteColor) {
+    if (!editingNote) return
+    editNoteColorRef.current = color
+    setEditingNote(prev => { if (!prev) return null; return { ...prev, note: { ...prev.note, color } } })
+    setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, color } : n))
+    saveNoteImmediate(editingNote.note.id, editNoteContentRef.current, color)
+  }
+
+  function handleNoteDelete() {
+    if (!editingNote) return
+    deleteNote(editingNote.note.id)
+  }
 
   // ── Render ──────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-[calc(100vh-8rem)] overflow-hidden">
+
       {/* Route tabs */}
       <div className="bg-white border-b border-gray-200 px-3 py-2 flex items-center gap-1.5 overflow-x-auto shrink-0">
         {routes.map(route => {
-          const isActive = route.id === activeRouteId
+          const isActive  = route.id === activeRouteId
           const isEditing = editingRouteId === route.id
           return (
             <div
@@ -561,32 +580,19 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
                     className={`p-0.5 rounded hover:bg-gray-200 text-gray-400 transition-opacity ${
                       isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
                     }`}
-                    onClick={() => setRouteMenuId(routeMenuId === route.id ? null : route.id)}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (routeMenuId === route.id) {
+                        setRouteMenuId(null); setRouteMenuPos(null)
+                      } else {
+                        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                        setRouteMenuPos({ top: rect.bottom + 4, left: rect.left })
+                        setRouteMenuId(route.id)
+                      }
+                    }}
                   >
                     <MoreHorizontal className="w-3.5 h-3.5" />
                   </button>
-                  {routeMenuId === route.id && (
-                    <div className="absolute left-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-[120px] py-1">
-                      <button
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700"
-                        onClick={() => { setEditingRouteId(route.id); setRouteMenuId(null) }}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2"
-                        onClick={() => { setCopyTarget(route); setRouteMenuId(null) }}
-                      >
-                        <Copy className="w-3 h-3" /> Copy
-                      </button>
-                      <button
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 text-red-600"
-                        onClick={() => { deleteRoute(route.id); setRouteMenuId(null) }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
@@ -611,6 +617,34 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
         )}
       </div>
 
+      {/* Route context menu — rendered fixed to escape overflow-x-auto */}
+      {activeMenuRoute && routeMenuPos && (
+        <div
+          className="fixed bg-white border border-gray-200 rounded-lg shadow-xl z-[9999] min-w-[130px] py-1"
+          style={{ top: routeMenuPos.top, left: routeMenuPos.left }}
+          onClick={e => e.stopPropagation()}
+        >
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700"
+            onClick={() => { setEditingRouteId(activeMenuRoute.id); setRouteMenuId(null); setRouteMenuPos(null) }}
+          >
+            Rename
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700 flex items-center gap-2"
+            onClick={() => { setCopyTarget(activeMenuRoute); setRouteMenuId(null); setRouteMenuPos(null) }}
+          >
+            <Copy className="w-3 h-3" /> Copy
+          </button>
+          <button
+            className="w-full text-left px-3 py-1.5 text-sm hover:bg-red-50 text-red-600"
+            onClick={() => { deleteRoute(activeMenuRoute.id); setRouteMenuId(null); setRouteMenuPos(null) }}
+          >
+            Delete
+          </button>
+        </div>
+      )}
+
       {/* Main area */}
       {routes.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-center p-8">
@@ -633,6 +667,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
+
           {/* Left: stop list */}
           <div className="w-80 shrink-0 flex flex-col border-r border-gray-200 bg-white overflow-hidden">
             <div className="p-3 border-b border-gray-100 flex items-center justify-between gap-2">
@@ -748,6 +783,8 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
                 placingNote={placingNote}
                 onNoteCreate={createNote}
                 onNoteClick={openNoteEdit}
+                canEditNotes={canEdit}
+                onNoteMove={moveNote}
               />
             </div>
             {/* Note placement toggle */}
@@ -790,6 +827,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
               onRouteNotesChange={updateStopRouteNotes}
             />
           )}
+
         </div>
       )}
 
@@ -800,20 +838,10 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
           x={editingNote.x}
           y={editingNote.y}
           canEdit={canEdit}
-          onContentChange={content => {
-            editNoteContentRef.current = content
-            setEditingNote(prev => prev ? { ...prev, note: { ...prev.note, content } } : null)
-            setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, content } : n))
-            scheduleNoteSave(editingNote.note.id, content, editNoteColorRef.current)
-          }}
-          onColorChange={color => {
-            editNoteColorRef.current = color
-            setEditingNote(prev => prev ? { ...prev, note: { ...prev.note, color } } : null)
-            setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, color } : n))
-            saveNoteImmediate(editingNote.note.id, editNoteContentRef.current, color)
-          }}
+          onContentChange={handleNoteContentChange}
+          onColorChange={handleNoteColorChange}
           onClose={closeNoteEdit}
-          onDelete={() => deleteNote(editingNote.note.id)}
+          onDelete={handleNoteDelete}
         />
       )}
 
@@ -821,9 +849,9 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
       {copyTarget && activeRoute && (
         <CopyRouteModal
           route={copyTarget}
-          stops={copyTarget.id === activeRouteId ? stops : []}
+          stops={stops}
           currentTripId={tripId}
-          currentTripTitle=""
+          currentTripTitle={activeRoute.name}
           currentUserId={currentUserId}
           onClose={() => setCopyTarget(null)}
           onCopied={handleCopied}

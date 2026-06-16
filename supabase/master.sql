@@ -13,6 +13,9 @@
 --
 -- INCREMENTAL SCRIPTS (for existing databases):
 --   supabase/run1.sql   — Storage bucket + storage RLS (if not yet applied)
+--   supabase/run2.sql   — routes table, stops.route_notes / route_id
+--   supabase/run3.sql   — map_notes table (sticky notes on map)
+--   supabase/run4.sql   — fuel columns on costs (fuel_liters, fuel_price_per_unit, fuel_unit, fuel_type, odometer)
 --
 -- ADDING FUTURE CHANGES:
 --   1. Create supabase/run(N+1).sql for the incremental change.
@@ -147,15 +150,21 @@ CREATE TABLE IF NOT EXISTS public.fuel_logs (
 
 -- COSTS -----------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.costs (
-  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  trip_id     UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
-  stop_id     UUID REFERENCES public.stops(id) ON DELETE SET NULL,
-  category    TEXT NOT NULL DEFAULT 'other',
-  description TEXT,
-  amount      NUMERIC(10,2) NOT NULL,
-  currency    TEXT NOT NULL DEFAULT 'EUR',
-  paid_by     UUID NOT NULL REFERENCES auth.users(id),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                   UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id              UUID NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  stop_id              UUID REFERENCES public.stops(id) ON DELETE SET NULL,
+  category             TEXT NOT NULL DEFAULT 'other',
+  description          TEXT,
+  amount               NUMERIC(10,2) NOT NULL,
+  currency             TEXT NOT NULL DEFAULT 'EUR',
+  paid_by              UUID NOT NULL REFERENCES auth.users(id),
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- Fuel metadata (populated only when category = 'fuel')
+  fuel_liters          NUMERIC(10,3),
+  fuel_price_per_unit  NUMERIC(10,4),
+  fuel_unit            TEXT CHECK (fuel_unit IN ('L', 'gal', 'kWh')),
+  fuel_type            TEXT CHECK (fuel_type IN ('gasoline', 'diesel', 'lpg', 'electric', 'other')),
+  odometer             NUMERIC(10,1)
 );
 
 -- COST SPLITS -----------------------------------------------------------------

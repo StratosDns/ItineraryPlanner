@@ -121,7 +121,12 @@ export type Database = {
           created_at: string
           currency: string
           description: string | null
+          fuel_liters: number | null
+          fuel_price_per_unit: number | null
+          fuel_type: string | null
+          fuel_unit: string | null
           id: string
+          odometer: number | null
           paid_by: string
           stop_id: string | null
           trip_id: string
@@ -132,7 +137,12 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          fuel_liters?: number | null
+          fuel_price_per_unit?: number | null
+          fuel_type?: string | null
+          fuel_unit?: string | null
           id?: string
+          odometer?: number | null
           paid_by: string
           stop_id?: string | null
           trip_id: string
@@ -143,7 +153,12 @@ export type Database = {
           created_at?: string
           currency?: string
           description?: string | null
+          fuel_liters?: number | null
+          fuel_price_per_unit?: number | null
+          fuel_type?: string | null
+          fuel_unit?: string | null
           id?: string
+          odometer?: number | null
           paid_by?: string
           stop_id?: string | null
           trip_id?: string

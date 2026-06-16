@@ -24,6 +24,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `run1.sql` | Storage bucket + storage RLS | Existing DB missing storage setup |
 | `run2.sql` | `route_notes` on stops · trip_members RLS recursion fix · `routes` table + RLS · `route_id` FK on stops | Existing DB after run1 |
 | `run3.sql` | `map_notes` table + RLS (sticky notes per route, with lat/lng/color/content) | Existing DB after run2 |
+| `run4.sql` | Fuel metadata columns on `costs` table (`fuel_liters`, `fuel_price_per_unit`, `fuel_unit`, `fuel_type`, `odometer`) | Existing DB after run3 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -76,11 +77,11 @@ src/
 │   │   └── page.tsx           Trip detail (server, fetches data)
 │   └── api/invite/route.ts    Invite member (service role)
 ├── components/
-│   ├── TripClient.tsx         Tab shell (Route/Fuel/Costs/Members)
+│   ├── TripClient.tsx         Tab shell (Route/Costs/Members) — Fuel tab removed
 │   ├── CreateTripButton.tsx   Modal to create trip
 │   ├── SignOutButton.tsx      Client sign-out
-│   ├── FuelTab.tsx            Fuel log CRUD
-│   ├── CostsTab.tsx           Expense + split CRUD
+│   ├── FuelTab.tsx            DEPRECATED — not imported, fuel now in CostsTab under Category=Fuel
+│   ├── CostsTab.tsx           Expense + split CRUD (incl. fuel sub-form when category=fuel)
 │   ├── MembersTab.tsx         Member management
 │   ├── map/RouteMap.tsx       Leaflet map (dynamic import, no SSR)
 │   └── stops/
@@ -100,7 +101,8 @@ supabase/
 ├── master.sql                 Full schema — use for fresh DB setup
 ├── run1.sql                   Storage bucket — run on existing DB if not yet applied
 ├── run2.sql                   Routes table + stops.route_notes/route_id — run after run1
-└── run3.sql                   map_notes table (sticky notes on map) — run after run2
+├── run3.sql                   map_notes table (sticky notes on map) — run after run2
+└── run4.sql                   fuel metadata columns on costs table — run after run3
 ```
 
 ---
@@ -116,8 +118,8 @@ supabase/
 | `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes |
 | `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
-| `fuel_logs` | trip_id, stop_id?, fuel_type, amount, unit, cost, currency, odometer |
-| `costs` | trip_id, stop_id?, category, amount, currency, paid_by |
+| `fuel_logs` | **DEPRECATED for new entries** — legacy table, not used by current UI |
+| `costs` | trip_id, stop_id?, category, amount, currency, paid_by, fuel_liters?, fuel_price_per_unit?, fuel_unit?, fuel_type?, odometer? |
 | `cost_splits` | cost_id, user_id, share_amount, settled |
 
 **RLS:** All tables protected. `my_trip_role(trip_id)` helper function used in policies.
@@ -151,9 +153,10 @@ supabase/
 - **OSRM public server** — free for low volume. For production use, self-host OSRM or switch to a paid routing API.
 - **Supabase Storage bucket `attachments`** — must be created manually in Supabase dashboard or via SQL (see schema.sql comment).
 - **Invite flow** — uses service role key server-side to look up users by email. Target user must already have an account. Consider adding email-based invitation (send magic link) in Phase 2.
-- **Fuel log** — supports gasoline/diesel/lpg/electric/other, multiple units (L/gal/kWh), optional odometer, optional linked stop.
+- **Fuel logging** — moved from dedicated `FuelTab` into `CostsTab` under Category=Fuel. Fuel sub-form appears inline when category=fuel. Supports all 3 combinations: liters+price→total, total+price→liters, total+liters→price. Units: L/gal/kWh with adaptive price label. Data stored as `fuel_*` columns on `costs` table (added in run4.sql). `fuel_logs` table is legacy/unused by current UI.
 - **Cost splits** — equal or custom. Per-split settled toggle. Balance summary (who owes who).
 - **No SSR for Leaflet** — `dynamic(() => import(...), { ssr: false })` used to avoid window-not-defined errors.
+- **Sticky notes draggable** — `RouteMap` accepts `canEditNotes` and `onNoteMove` props. When `canEditNotes=true`, note markers are `draggable: true` and fire `dragend` → `onNoteMove(id, lat, lng)` → Supabase update. Auto-saves on drop. Uses stable `useRef` pattern to avoid stale callback captures.
 
 ---
 

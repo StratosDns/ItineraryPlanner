@@ -27,13 +27,17 @@ interface Props {
   onNoteCreate?: (lat: number, lng: number) => void
   /** Called when the user clicks an existing note; x/y are viewport coords */
   onNoteClick?: (note: MapNote, clientX: number, clientY: number) => void
+  /** When true, notes can be dragged to new positions */
+  canEditNotes?: boolean
+  /** Called after a note is dragged to a new position */
+  onNoteMove?: (id: string, lat: number, lng: number) => void
 }
 
 let L: typeof import('leaflet') | null = null
 
 export default function RouteMap({
   stops, selectedStopId, onMapClick, onMarkerClick, onRouteUpdate, onSegmentClick,
-  mapNotes, placingNote, onNoteCreate, onNoteClick,
+  mapNotes, placingNote, onNoteCreate, onNoteClick, canEditNotes, onNoteMove,
 }: Props) {
   const mapRef         = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<import('leaflet').Map | null>(null)
@@ -50,6 +54,7 @@ export default function RouteMap({
   const onSegmentClickRef = useRef(onSegmentClick)
   const onNoteCreateRef   = useRef(onNoteCreate)
   const onNoteClickRef    = useRef(onNoteClick)
+  const onNoteMoveRef     = useRef(onNoteMove)
   const placingNoteRef    = useRef(placingNote)
   const onMapClickRef     = useRef(onMapClick)
   useEffect(() => { onMarkerClickRef.current  = onMarkerClick  }, [onMarkerClick])
@@ -57,6 +62,7 @@ export default function RouteMap({
   useEffect(() => { onSegmentClickRef.current = onSegmentClick }, [onSegmentClick])
   useEffect(() => { onNoteCreateRef.current   = onNoteCreate   }, [onNoteCreate])
   useEffect(() => { onNoteClickRef.current    = onNoteClick    }, [onNoteClick])
+  useEffect(() => { onNoteMoveRef.current     = onNoteMove     }, [onNoteMove])
   useEffect(() => { onMapClickRef.current     = onMapClick     }, [onMapClick])
   useEffect(() => { placingNoteRef.current    = placingNote    }, [placingNote])
 
@@ -271,10 +277,18 @@ export default function RouteMap({
         iconSize: [130, 52],
         iconAnchor: [65, 52],
       })
-      const marker = Lx.marker([note.lat, note.lng], { icon, zIndexOffset: 500 }).addTo(map)
+      const marker = Lx.marker([note.lat, note.lng], {
+        icon,
+        zIndexOffset: 500,
+        draggable: canEditNotes ?? false,
+      }).addTo(map)
       marker.on('click', (e) => {
         Lx.DomEvent.stopPropagation(e)
         onNoteClickRef.current?.(note, e.originalEvent.clientX, e.originalEvent.clientY)
+      })
+      marker.on('dragend', () => {
+        const { lat, lng } = marker.getLatLng()
+        onNoteMoveRef.current?.(note.id, lat, lng)
       })
       noteMarkersRef.current.push(marker)
     }
