@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
-import { Database } from '@/types/database'
+import { Database, TripRole } from '@/types/database'
 
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
   }
 
-  if (!['editor', 'viewer'].includes(role)) {
+  if (!(['editor', 'viewer'] as TripRole[]).includes(role)) {
     return NextResponse.json({ error: 'Invalid role' }, { status: 400 })
   }
 
@@ -32,40 +32,44 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: membership } = await supabase
+  // Use admin client for all DB work — avoids generic inference issues with createServerClient
+  const admin = createAdminClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+
+  // Verify requester is owner
+  const { data: membership } = await admin
     .from('trip_members')
     .select('role')
     .eq('trip_id', tripId)
     .eq('user_id', user.id)
     .single()
 
-  if (membership?.role !== 'owner') {
+  // Explicit cast: admin client infers correctly but TS still needs help here
+  const requesterRole = (membership as { role: TripRole } | null)?.role
+  if (requesterRole !== 'owner') {
     return NextResponse.json({ error: 'Only the owner can invite members' }, { status: 403 })
   }
 
-  // Admin client to look up user by email
-  const admin = createAdminClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  )
-
+  // Look up target user by email
   const { data: { users }, error: listErr } = await admin.auth.admin.listUsers()
   if (listErr) return NextResponse.json({ error: 'Failed to look up user' }, { status: 500 })
 
   const target = users.find(u => u.email === email)
   if (!target) {
     return NextResponse.json({
-      error: `No account found for ${email}. Ask them to register first.`
+      error: `No account found for ${email}. They must register first.`,
     }, { status: 404 })
   }
 
   // Check not already a member
-  const { data: existing } = await supabase
+  const { data: existing } = await admin
     .from('trip_members')
     .select('id')
     .eq('trip_id', tripId)
     .eq('user_id', target.id)
-    .single()
+    .maybeSingle()
 
   if (existing) {
     return NextResponse.json({ error: 'This user is already a member' }, { status: 409 })

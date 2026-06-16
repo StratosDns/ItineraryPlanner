@@ -18,7 +18,7 @@
 
 | Layer | Choice | Reason |
 |---|---|---|
-| Framework | Next.js 15 (App Router) | Vercel-native, SSR, file routing |
+| Framework | Next.js 16.2.9 (App Router) | Vercel-native, SSR, file routing |
 | Language | TypeScript | Required |
 | Styling | Tailwind CSS v4 | Utility-first, no config file needed |
 | Maps | Leaflet + OpenStreetMap | Free, no API key |
@@ -97,6 +97,14 @@ supabase/
 | `owner` | Full control: delete trip, manage all members, all edits |
 | `editor` | Add/edit/delete stops, fuel logs, costs, attachments |
 | `viewer` | Read-only across all tabs |
+
+---
+
+## Known Issues / Fixed Bugs
+
+- **Next.js version**: Originally set to 15.3.3 (had CVE-2025-66478). Updated to 16.2.9 which fixes both the CVE and aligns with the eslint-config-next version (both must match).
+- **ESLint config**: `create-next-app@16.x` generates a flat config using `defineConfig` and named imports from `eslint-config-next`. Imports must use `.js` extension (`core-web-vitals.js`, `typescript.js`) for Node ESM resolution — omitting `.js` causes a build failure on Vercel.
+- **Invite route TypeScript**: `@supabase/ssr`'s `createServerClient` loses its `Database` generic in API routes under certain cookie configurations, causing queries to type `data` as `never`. Fixed by using the admin client for all DB operations in the invite route and casting with `as { role: TripRole } | null`.
 
 ---
 
