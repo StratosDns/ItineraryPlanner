@@ -22,10 +22,25 @@ export default function StopPanel({ stop, canEdit, onClose, onNotesChange }: Pro
   const [label, setLabel] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ref mirrors notes so the unmount cleanup has the latest value without
+  // being in its dependency array (avoids re-registering the effect on every keystroke)
+  const notesRef = useRef(stop.notes ?? '')
 
   useEffect(() => {
     setNotes(stop.notes ?? '')
+    notesRef.current = stop.notes ?? ''
     fetchAttachments()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stop.id])
+
+  // Flush any pending debounced save when the panel closes
+  useEffect(() => {
+    return () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current)
+        supabase.from('stops').update({ notes: notesRef.current }).eq('id', stop.id)
+      }
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stop.id])
 
@@ -42,6 +57,7 @@ export default function StopPanel({ stop, canEdit, onClose, onNotesChange }: Pro
 
   function handleNotesChange(value: string) {
     setNotes(value)
+    notesRef.current = value
     onNotesChange(stop.id, value)
     if (saveTimer.current) clearTimeout(saveTimer.current)
     saveTimer.current = setTimeout(async () => {

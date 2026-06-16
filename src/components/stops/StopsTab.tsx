@@ -169,6 +169,8 @@ export default function StopsTab({ tripId, initialStops, canEdit }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [adding, setAdding] = useState(false)
   const [panelStop, setPanelStop] = useState<Stop | null>(null)
+  // Driving distances between consecutive stops, updated by RouteMap
+  const [segmentDistances, setSegmentDistances] = useState<number[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -253,18 +255,27 @@ export default function StopsTab({ tripId, initialStops, canEdit }: Props) {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
             <SortableContext items={stops.map(s => s.id)} strategy={verticalListSortingStrategy}>
               {stops.map((stop, i) => (
-                <SortableStop
-                  key={stop.id}
-                  stop={stop}
-                  index={i}
-                  selected={selectedId === stop.id}
-                  canEdit={canEdit}
-                  onClick={() => {
-                    setSelectedId(stop.id)
-                    setPanelStop(stop)
-                  }}
-                  onDelete={() => deleteStop(stop.id)}
-                />
+                <div key={stop.id}>
+                  {i > 0 && (
+                    <div className="flex items-center gap-1.5 pl-10 py-0.5 text-xs text-gray-400">
+                      <span className="block w-px h-3 bg-gray-200 ml-1" />
+                      {segmentDistances[i - 1] != null
+                        ? <span>{segmentDistances[i - 1].toFixed(1)} km</span>
+                        : <span className="italic">routing…</span>}
+                    </div>
+                  )}
+                  <SortableStop
+                    stop={stop}
+                    index={i}
+                    selected={selectedId === stop.id}
+                    canEdit={canEdit}
+                    onClick={() => {
+                      setSelectedId(stop.id)
+                      setPanelStop(stop)
+                    }}
+                    onDelete={() => deleteStop(stop.id)}
+                  />
+                </div>
               ))}
             </SortableContext>
           </DndContext>
@@ -290,6 +301,7 @@ export default function StopsTab({ tripId, initialStops, canEdit }: Props) {
             stops={stops}
             selectedStopId={selectedId}
             onMarkerClick={stop => { setSelectedId(stop.id); setPanelStop(stop) }}
+            onRouteUpdate={setSegmentDistances}
           />
         </div>
       </div>

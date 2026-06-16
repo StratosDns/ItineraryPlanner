@@ -1,25 +1,34 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Stop } from '@/types/database'
 
-// Dynamically import Leaflet to avoid SSR issues
 interface Props {
   stops: Stop[]
   selectedStopId?: string | null
   onMapClick?: (lat: number, lng: number) => void
   onMarkerClick?: (stop: Stop) => void
+  /** Called whenever a driving route is resolved: array of N-1 distances in km */
+  onRouteUpdate?: (distances: number[]) => void
 }
 
 let L: typeof import('leaflet') | null = null
 
-export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerClick }: Props) {
+export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerClick, onRouteUpdate }: Props) {
   const mapRef = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<import('leaflet').Map | null>(null)
   const markersRef = useRef<import('leaflet').Marker[]>([])
   const routeLayerRef = useRef<import('leaflet').Polyline | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
+  const [mapReady, setMapReady] = useState(false)
 
-  // Initialize map
+  // Keep callback refs stable so effects do not re-run when they change
+  const onMarkerClickRef = useRef(onMarkerClick)
+  const onRouteUpdateRef = useRef(onRouteUpdate)
+  useEffect(() => { onMarkerClickRef.current = onMarkerClick }, [onMarkerClick])
+  useEffect(() => { onRouteUpdateRef.current = onRouteUpdate }, [onRouteUpdate])
+
+  // Init map
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return
 
@@ -27,7 +36,6 @@ export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerCl
       L = (await import('leaflet')).default
       await import('leaflet/dist/leaflet.css')
 
-      // Fix Leaflet default icon paths in Next.js
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (L.Icon.Default.prototype as any)._getIconUrl
       L.Icon.Default.mergeOptions({
@@ -36,11 +44,7 @@ export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerCl
         shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
       })
 
-      const map = L.map(mapRef.current!, {
-        center: [48.8566, 2.3522],
-        zoom: 5,
-        zoomControl: true,
-      })
+      const map = L.map(mapRef.current!, { center: [48.8566, 2.3522], zoom: 5 })
 
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -52,35 +56,39 @@ export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerCl
       }
 
       mapInstanceRef.current = map
-      updateMarkers()
+      setMapReady(true)
     }
 
     init()
 
     return () => {
+      abortRef.current?.abort()
       mapInstanceRef.current?.remove()
       mapInstanceRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Update markers + route when stops change
-  function updateMarkers() {
-    if (!mapInstanceRef.current || !L) return
-    const map = mapInstanceRef.current
+  // Update markers + driving route when stops or selection changes
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !L) return
 
-    // Clear existing markers
+    const map = mapInstanceRef.current
+    const Lx = L
+
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
     routeLayerRef.current?.remove()
+    routeLayerRef.current = null
+    abortRef.current?.abort()
 
     const validStops = stops.filter(s => s.lat != null && s.lng != null)
     if (validStops.length === 0) return
 
-    // Add numbered markers
+    // Numbered markers
     validStops.forEach((stop, i) => {
       const isSelected = stop.id === selectedStopId
-      const icon = L!.divIcon({
+      const icon = Lx.divIcon({
         className: '',
         html: `<div style="
           width:28px;height:28px;border-radius:50%;
@@ -95,39 +103,64 @@ export default function RouteMap({ stops, selectedStopId, onMapClick, onMarkerCl
         iconAnchor: [14, 14],
       })
 
-      const marker = L!.marker([stop.lat!, stop.lng!], { icon })
+      const marker = Lx.marker([stop.lat!, stop.lng!], { icon })
         .addTo(map)
         .bindTooltip(stop.name, { direction: 'top', offset: [0, -10] })
 
-      if (onMarkerClick) {
-        marker.on('click', () => onMarkerClick(stop))
-      }
-
+      marker.on('click', () => onMarkerClickRef.current?.(stop))
       markersRef.current.push(marker)
     })
 
-    // Straight-line route (OSRM route is fetched separately and drawn via prop)
-    if (validStops.length >= 2) {
-      const latlngs = validStops.map(s => [s.lat!, s.lng!] as [number, number])
-      routeLayerRef.current = L.polyline(latlngs, {
-        color: '#3b82f6',
-        weight: 3,
-        opacity: 0.7,
-        dashArray: '6,6',
-      }).addTo(map)
+    map.fitBounds(
+      Lx.latLngBounds(validStops.map(s => [s.lat!, s.lng!])),
+      { padding: [40, 40], maxZoom: 14 }
+    )
+
+    if (validStops.length < 2) return
+
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const coords = validStops.map(s => `${s.lng!.toFixed(6)},${s.lat!.toFixed(6)}`).join(';')
+
+    function drawFallback() {
+      if (!mapInstanceRef.current) return
+      routeLayerRef.current = Lx.polyline(
+        validStops.map(s => [s.lat!, s.lng!] as [number, number]),
+        { color: '#3b82f6', weight: 3, opacity: 0.7, dashArray: '6,6' }
+      ).addTo(mapInstanceRef.current)
     }
 
-    // Fit bounds
-    const bounds = L.latLngBounds(validStops.map(s => [s.lat!, s.lng!]))
-    map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 })
-  }
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson&steps=false`,
+      { signal: controller.signal }
+    )
+      .then(r => r.json())
+      .then(json => {
+        if (controller.signal.aborted || !mapInstanceRef.current) return
+        if (json.code !== 'Ok' || !json.routes?.[0]) { drawFallback(); return }
 
-  useEffect(() => {
-    updateMarkers()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stops, selectedStopId])
+        const route = json.routes[0]
+        const distances: number[] = route.legs.map(
+          (l: { distance: number }) => Math.round(l.distance / 100) / 10
+        )
+        onRouteUpdateRef.current?.(distances)
 
-  return (
-    <div ref={mapRef} className="w-full h-full rounded-xl overflow-hidden" />
-  )
+        const latlngs: [number, number][] = route.geometry.coordinates.map(
+          ([lng, lat]: [number, number]) => [lat, lng]
+        )
+        routeLayerRef.current = Lx.polyline(latlngs, {
+          color: '#3b82f6',
+          weight: 4,
+          opacity: 0.85,
+        }).addTo(mapInstanceRef.current)
+      })
+      .catch(err => {
+        if (err.name === 'AbortError' || !mapInstanceRef.current) return
+        drawFallback()
+      })
+
+  }, [stops, selectedStopId, mapReady])
+
+  return <div ref={mapRef} className="w-full h-full rounded-xl overflow-hidden" />
 }
