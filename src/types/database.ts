@@ -267,14 +267,18 @@ export interface Database {
         }
       }
     }
-    Views: Record<string, never>
+    Views: {
+      [_ in never]: never
+    }
     Functions: {
       my_trip_role: {
         Args: { trip: string }
         Returns: TripRole | null
       }
     }
-    Enums: Record<string, never>
+    Enums: {
+      [_ in never]: never
+    }
   }
 }
 

@@ -1,16 +1,11 @@
 import { createServerClient } from '@supabase/ssr'
-import { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '@/types/database'
 
-// createServerClient<Database> loses its generic in Next.js 16 strict TypeScript —
-// .from() would infer `never` on all callers. Explicitly annotating the return type
-// as SupabaseClient<Database> (with a cast) restores correct inference everywhere
-// this client is used, without requiring per-call casts in server components.
-export async function createClient(): Promise<SupabaseClient<Database>> {
+export async function createClient() {
   const cookieStore = await cookies()
 
-  const client = createServerClient<Database>(
+  return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -31,7 +26,4 @@ export async function createClient(): Promise<SupabaseClient<Database>> {
       },
     }
   )
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return client as unknown as SupabaseClient<Database>
 }

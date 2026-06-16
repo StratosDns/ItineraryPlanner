@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
-import { createClient as createAdminClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient as createAdminClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database, TripRole } from '@/types/database'
 
@@ -32,13 +32,11 @@ export async function POST(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Use admin client for all DB work.
-  // Cast to SupabaseClient<Database> explicitly — createAdminClient<Database>() loses its
-  // generic in Next.js 16 strict TypeScript, causing .from() to infer `never`.
-  const admin = createAdminClient(
+  // Use admin client for all DB work (bypasses RLS, needed for cross-user lookups)
+  const admin = createAdminClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
-  ) as SupabaseClient<Database>
+  )
 
   // Verify requester is owner
   const { data: membership } = await admin
@@ -48,9 +46,7 @@ export async function POST(request: NextRequest) {
     .eq('user_id', user.id)
     .single()
 
-  // Explicit cast: admin client infers correctly but TS still needs help here
-  const requesterRole = (membership as { role: TripRole } | null)?.role
-  if (requesterRole !== 'owner') {
+  if (membership?.role !== 'owner') {
     return NextResponse.json({ error: 'Only the owner can invite members' }, { status: 403 })
   }
 
@@ -78,11 +74,9 @@ export async function POST(request: NextRequest) {
   }
 
   // Add member
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const insertPayload = { trip_id: tripId, user_id: target.id, role, invited_by: user.id } as any
   const { data: member, error: insertErr } = await admin
     .from('trip_members')
-    .insert(insertPayload)
+    .insert({ trip_id: tripId, user_id: target.id, role, invited_by: user.id })
     .select('*, profile:profiles(*)')
     .single()
 
