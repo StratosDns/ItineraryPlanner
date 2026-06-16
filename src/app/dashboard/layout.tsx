@@ -13,7 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .from('profiles')
     .select('display_name, avatar_url')
     .eq('id', user.id)
-    .single() as { data: { display_name: string | null; avatar_url: string | null } | null; error: unknown }
+    .single()
 
   return (
     <div className="min-h-screen flex flex-col">

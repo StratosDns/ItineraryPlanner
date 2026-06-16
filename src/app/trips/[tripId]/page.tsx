@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect, notFound } from 'next/navigation'
 import TripClient from '@/components/TripClient'
+import type { TripRole, TripMemberWithProfile } from '@/types/database'
 
 interface Props {
   params: Promise<{ tripId: string }>
@@ -45,9 +46,9 @@ export default async function TripPage({ params }: Props) {
     <TripClient
       trip={trip}
       initialStops={stops ?? []}
-      members={(members ?? []) as any}
+      members={(members ?? []) as TripMemberWithProfile[]}
       currentUserId={user.id}
-      role={membership.role as import('@/types/database').TripRole}
+      role={membership.role as TripRole}
     />
   )
 }

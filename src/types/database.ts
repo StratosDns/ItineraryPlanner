@@ -47,6 +47,13 @@ export type Database = {
             referencedRelation: "costs"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "cost_splits_user_id_profiles_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
         ]
       }
       costs: {
@@ -474,7 +481,8 @@ export const Constants = {
 } as const
 
 // ---------------------------------------------------------------------------
-// Convenience aliases (replaces the hand-written aliases lost after CLI gen)
+// Convenience aliases
+// NOTE: This block must be re-appended after every `supabase gen types` regen.
 // ---------------------------------------------------------------------------
 
 export type Trip = Tables<'trips'>

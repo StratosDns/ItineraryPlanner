@@ -10,9 +10,6 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  type TripRow = { id: string; title: string; description: string | null; created_at: string; owner_id: string }
-  type Membership = { role: string; trip: TripRow | null }
-
   // Fetch all trips the user is a member of
   const { data: memberships } = await supabase
     .from('trip_members')
@@ -23,11 +20,11 @@ export default async function DashboardPage() {
       )
     `)
     .eq('user_id', user.id)
-    .order('joined_at', { ascending: false }) as { data: Membership[] | null; error: unknown }
+    .order('joined_at', { ascending: false })
 
   const trips = (memberships ?? [])
-    .filter((m): m is Membership & { trip: TripRow } => m.trip !== null)
-    .map(m => ({ ...m.trip, role: m.role }))
+    .filter(m => m.trip !== null)
+    .map(m => ({ ...m.trip!, role: m.role }))
 
   return (
     <div>
