@@ -486,3 +486,24 @@ export const Constants = {
     Enums: {},
   },
 } as const
+
+// ---------------------------------------------------------------------------
+// Convenience aliases
+// NOTE: This block is auto-appended by scripts/gen-types.ps1 after each regen.
+// ---------------------------------------------------------------------------
+
+export type Trip = Tables<'trips'>
+export type Stop = Tables<'stops'>
+export type StopAttachment = Tables<'stop_attachments'>
+export type Cost = Tables<'costs'>
+export type CostSplit = Tables<'cost_splits'>
+export type FuelLog = Tables<'fuel_logs'>
+export type Profile = Tables<'profiles'>
+
+export type TripRole = 'owner' | 'editor' | 'viewer'
+export type FuelType = 'gasoline' | 'diesel' | 'lpg' | 'electric' | 'other'
+export type FuelUnit = 'L' | 'gal' | 'kWh'
+
+export type TripMemberWithProfile = Tables<'trip_members'> & {
+  profile: Profile | null
+}
