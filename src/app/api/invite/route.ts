@@ -78,9 +78,11 @@ export async function POST(request: NextRequest) {
   }
 
   // Add member
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const insertPayload = { trip_id: tripId, user_id: target.id, role, invited_by: user.id } as any
   const { data: member, error: insertErr } = await admin
     .from('trip_members')
-    .insert({ trip_id: tripId, user_id: target.id, role, invited_by: user.id })
+    .insert(insertPayload)
     .select('*, profile:profiles(*)')
     .single()
 

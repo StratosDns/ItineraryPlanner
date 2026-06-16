@@ -130,7 +130,7 @@ supabase/
 
 - **Next.js version**: Originally set to 15.3.3 (had CVE-2025-66478). Updated to 16.2.9 which fixes both the CVE and aligns with the eslint-config-next version (both must match).
 - **ESLint config**: `create-next-app@16.x` generates a flat config using `defineConfig` and named imports from `eslint-config-next`. Imports must use `.js` extension (`core-web-vitals.js`, `typescript.js`) for Node ESM resolution — omitting `.js` causes a build failure on Vercel.
-- **Invite route TypeScript**: Both `createServerClient` and `createAdminClient<Database>()` lose their `Database` generic in Next.js 16 strict TypeScript, causing `.from()` to infer `never`. Fix: call `createAdminClient()` without the generic, then cast the result: `createAdminClient(...) as SupabaseClient<Database>`. This restores correct types on all downstream `.from()` calls. Import `SupabaseClient` from `@supabase/supabase-js`.
+- **Invite route TypeScript**: The `Database` generic does not propagate through the `@supabase/supabase-js` query builder chain in Next.js 16 API routes — `.from().insert()` infers `never[]` regardless of how the client is typed. Client-level casts (`as SupabaseClient<Database>`) do not fix it. The only reliable escape: cast the insert payload directly — `const insertPayload = { ... } as any` — then pass `insertPayload` to `.insert()`. The ESLint suppression comment is required. This issue does NOT affect client components using `createBrowserClient`.
 
 ---
 
