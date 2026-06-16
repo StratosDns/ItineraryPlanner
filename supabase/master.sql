@@ -228,10 +228,7 @@ CREATE POLICY "Owner can delete trip"
 DROP POLICY IF EXISTS "Members can read trip_members" ON public.trip_members;
 CREATE POLICY "Members can read trip_members"
   ON public.trip_members FOR SELECT TO authenticated
-  USING (EXISTS (
-    SELECT 1 FROM public.trip_members tm
-    WHERE tm.trip_id = trip_members.trip_id AND tm.user_id = auth.uid()
-  ));
+  USING (public.my_trip_role(trip_id) IS NOT NULL);  -- SECURITY DEFINER avoids self-referential recursion
 
 DROP POLICY IF EXISTS "Owner can insert members" ON public.trip_members;
 CREATE POLICY "Owner can insert members"

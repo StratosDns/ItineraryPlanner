@@ -24,31 +24,39 @@ export default function CreateTripButton({ userId, primary }: Props) {
     setError(null)
     setLoading(true)
 
-    // Create trip
-    const { data: trip, error: tripErr } = await supabase
-      .from('trips')
-      .insert({ title, description: description || null, owner_id: userId })
-      .select()
-      .single()
+    // Generate UUID client-side so we can redirect immediately without
+    // needing RETURNING — avoids RLS issue where SELECT policy on trips
+    // filters out the new row before trip_members is populated.
+    const tripId = crypto.randomUUID()
 
-    if (tripErr || !trip) {
-      setError(tripErr?.message ?? 'Failed to create trip')
+    const { error: tripErr } = await supabase
+      .from('trips')
+      .insert({ id: tripId, title, description: description || null, owner_id: userId })
+
+    if (tripErr) {
+      setError(tripErr.message)
       setLoading(false)
       return
     }
 
     // Add self as owner in trip_members
-    await supabase.from('trip_members').insert({
-      trip_id: trip.id,
+    const { error: memberErr } = await supabase.from('trip_members').insert({
+      trip_id: tripId,
       user_id: userId,
       role: 'owner',
     })
+
+    if (memberErr) {
+      setError(memberErr.message)
+      setLoading(false)
+      return
+    }
 
     setLoading(false)
     setOpen(false)
     setTitle('')
     setDescription('')
-    router.push(`/trips/${trip.id}`)
+    router.push(`/trips/${tripId}`)
     router.refresh()
   }
 
