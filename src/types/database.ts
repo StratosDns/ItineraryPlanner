@@ -489,7 +489,8 @@ export const Constants = {
 
 // ---------------------------------------------------------------------------
 // Convenience aliases
-// NOTE: This block is auto-appended by scripts/gen-types.ps1 after each regen.
+// NOTE: This block must be re-appended after every `supabase gen types` regen.
+// Use scripts/gen-types.ps1 which does this automatically.
 // ---------------------------------------------------------------------------
 
 export type Trip = Tables<'trips'>

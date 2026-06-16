@@ -13,7 +13,6 @@ export default async function TripPage({ params }: Props) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect('/login')
 
-  // Verify membership
   const { data: membership } = await supabase
     .from('trip_members')
     .select('role')

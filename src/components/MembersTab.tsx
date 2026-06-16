@@ -40,11 +40,6 @@ export default function MembersTab({ tripId, members: initialMembers, currentUse
     setInviteResult(null)
     setInviting(true)
 
-    // Look up user by email via profiles
-    // Note: in production use a secure server action or edge function
-    // Here we query the profiles table — requires email to be stored there,
-    // or use Supabase Admin API (service role) via an API route.
-    // For now we surface a message guiding the user.
     const res = await fetch('/api/invite', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -158,7 +153,7 @@ export default function MembersTab({ tripId, members: initialMembers, currentUse
 
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-1.5">
-                  {roleIcon(m.role)}
+                  {roleIcon(m.role as TripRole)}
                   <span className="text-sm font-medium text-gray-900 truncate">
                     {m.profile?.display_name ?? 'Unknown user'}
                     {isMe && <span className="text-gray-400 font-normal ml-1">(you)</span>}
@@ -169,7 +164,7 @@ export default function MembersTab({ tripId, members: initialMembers, currentUse
                 </p>
               </div>
 
-              <span className={roleBadge(m.role)}>{m.role}</span>
+              <span className={roleBadge(m.role as TripRole)}>{m.role}</span>
 
               {canModify && (
                 <div className="flex items-center gap-1 shrink-0">

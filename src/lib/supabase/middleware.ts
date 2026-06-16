@@ -1,6 +1,8 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieMethodsServer } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { Database } from '@/types/database'
+
+type CookieToSet = Parameters<NonNullable<CookieMethodsServer['setAll']>>[0][number]
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
@@ -13,7 +15,7 @@ export async function updateSession(request: NextRequest) {
         getAll() {
           return request.cookies.getAll()
         },
-        setAll(cookiesToSet) {
+        setAll(cookiesToSet: CookieToSet[]) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           )
@@ -26,7 +28,7 @@ export async function updateSession(request: NextRequest) {
     }
   )
 
-  // Refresh session — do not remove this
+  // Refresh session - do not remove this
   const { data: { user } } = await supabase.auth.getUser()
 
   const { pathname } = request.nextUrl
