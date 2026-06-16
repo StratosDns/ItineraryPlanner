@@ -14,6 +14,64 @@ export type Database = {
   }
   public: {
     Tables: {
+      map_notes: {
+        Row: {
+          color: string
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          lat: number
+          lng: number
+          route_id: string
+          trip_id: string
+        }
+        Insert: {
+          color?: string
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lat: number
+          lng: number
+          route_id: string
+          trip_id: string
+        }
+        Update: {
+          color?: string
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          lat?: number
+          lng?: number
+          route_id?: string
+          trip_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "map_notes_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "routes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_notes_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "map_notes_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       cost_splits: {
         Row: {
           cost_id: string
@@ -568,3 +626,6 @@ export type TripRoute = Tables<'routes'>
 export type TripRouteWithCreator = TripRoute & {
   creator: Profile | null
 }
+
+export type MapNote = Tables<'map_notes'>
+export type NoteColor = 'yellow' | 'green' | 'red' | 'blue'

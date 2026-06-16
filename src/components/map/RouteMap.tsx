@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Stop } from '@/types/database'
+import { Stop, MapNote } from '@/types/database'
+
+const NOTE_COLORS: Record<string, { bg: string; border: string }> = {
+  yellow: { bg: '#fef08a', border: '#ca8a04' },
+  green:  { bg: '#bbf7d0', border: '#16a34a' },
+  red:    { bg: '#fecaca', border: '#dc2626' },
+  blue:   { bg: '#bfdbfe', border: '#2563eb' },
+}
 
 interface Props {
   stops: Stop[]
@@ -12,28 +19,52 @@ interface Props {
   onRouteUpdate?: (distances: number[]) => void
   /** Emits the 0-based leg index when a route segment is clicked */
   onSegmentClick?: (index: number) => void
+  /** Sticky notes to render on the map */
+  mapNotes?: MapNote[]
+  /** When true the next map click places a new note instead of normal click */
+  placingNote?: boolean
+  /** Called with lat/lng when the user places a new note */
+  onNoteCreate?: (lat: number, lng: number) => void
+  /** Called when the user clicks an existing note; x/y are viewport coords */
+  onNoteClick?: (note: MapNote, clientX: number, clientY: number) => void
 }
 
 let L: typeof import('leaflet') | null = null
 
 export default function RouteMap({
-  stops, selectedStopId, onMapClick, onMarkerClick, onRouteUpdate, onSegmentClick
+  stops, selectedStopId, onMapClick, onMarkerClick, onRouteUpdate, onSegmentClick,
+  mapNotes, placingNote, onNoteCreate, onNoteClick,
 }: Props) {
-  const mapRef = useRef<HTMLDivElement>(null)
+  const mapRef         = useRef<HTMLDivElement>(null)
   const mapInstanceRef = useRef<import('leaflet').Map | null>(null)
-  const markersRef = useRef<import('leaflet').Marker[]>([])
-  const legPolyRef = useRef<import('leaflet').Polyline[]>([])
-  const labelRef = useRef<import('leaflet').Marker[]>([])
-  const abortRef = useRef<AbortController | null>(null)
+  const markersRef     = useRef<import('leaflet').Marker[]>([])
+  const legPolyRef     = useRef<import('leaflet').Polyline[]>([])
+  const labelRef       = useRef<import('leaflet').Marker[]>([])
+  const noteMarkersRef = useRef<import('leaflet').Marker[]>([])
+  const abortRef       = useRef<AbortController | null>(null)
   const [mapReady, setMapReady] = useState(false)
 
   // Stable callback refs — prevent effects from re-running on every render
-  const onMarkerClickRef = useRef(onMarkerClick)
-  const onRouteUpdateRef = useRef(onRouteUpdate)
+  const onMarkerClickRef  = useRef(onMarkerClick)
+  const onRouteUpdateRef  = useRef(onRouteUpdate)
   const onSegmentClickRef = useRef(onSegmentClick)
-  useEffect(() => { onMarkerClickRef.current = onMarkerClick }, [onMarkerClick])
-  useEffect(() => { onRouteUpdateRef.current = onRouteUpdate }, [onRouteUpdate])
+  const onNoteCreateRef   = useRef(onNoteCreate)
+  const onNoteClickRef    = useRef(onNoteClick)
+  const placingNoteRef    = useRef(placingNote)
+  const onMapClickRef     = useRef(onMapClick)
+  useEffect(() => { onMarkerClickRef.current  = onMarkerClick  }, [onMarkerClick])
+  useEffect(() => { onRouteUpdateRef.current  = onRouteUpdate  }, [onRouteUpdate])
   useEffect(() => { onSegmentClickRef.current = onSegmentClick }, [onSegmentClick])
+  useEffect(() => { onNoteCreateRef.current   = onNoteCreate   }, [onNoteCreate])
+  useEffect(() => { onNoteClickRef.current    = onNoteClick    }, [onNoteClick])
+  useEffect(() => { onMapClickRef.current     = onMapClick     }, [onMapClick])
+  useEffect(() => { placingNoteRef.current    = placingNote    }, [placingNote])
+
+  // Update cursor when placement mode changes
+  useEffect(() => {
+    if (!mapRef.current) return
+    mapRef.current.style.cursor = placingNote ? 'crosshair' : ''
+  }, [placingNote])
 
   // ── Init ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -53,7 +84,16 @@ export default function RouteMap({
         attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
         maxZoom: 19,
       }).addTo(map)
-      if (onMapClick) map.on('click', (e) => onMapClick(e.latlng.lat, e.latlng.lng))
+
+      // Unified click handler: place note OR pass through to onMapClick
+      map.on('click', (e) => {
+        if (placingNoteRef.current) {
+          onNoteCreateRef.current?.(e.latlng.lat, e.latlng.lng)
+        } else {
+          onMapClickRef.current?.(e.latlng.lat, e.latlng.lng)
+        }
+      })
+
       mapInstanceRef.current = map
       setMapReady(true)
     }
@@ -66,8 +106,7 @@ export default function RouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Markers (re-runs on stop list or selection change) ────────────────────
-  // Track last stop positions so we only fitBounds when the list actually changes
+  // ── Stop markers (re-runs on stop list or selection change) ───────────────
   const stopsSigRef = useRef('')
 
   useEffect(() => {
@@ -149,7 +188,6 @@ export default function RouteMap({
           const distKm = Math.round(leg.distance / 100) / 10
           distances.push(distKm)
 
-          // Build road-following geometry for this leg
           const latlngs: [number, number][] = []
           for (const step of leg.steps) {
             for (const [lng, lat] of step.geometry.coordinates) {
@@ -158,7 +196,6 @@ export default function RouteMap({
             }
           }
 
-          // Clickable polyline per leg
           const poly = Lx.polyline(latlngs, { color: '#3b82f6', weight: 5, opacity: 0.8 })
           poly.on('click', (e) => {
             Lx.DomEvent.stopPropagation(e)
@@ -169,7 +206,6 @@ export default function RouteMap({
           poly.addTo(mapInstanceRef.current)
           legPolyRef.current.push(poly)
 
-          // Distance label at midpoint of leg geometry
           if (latlngs.length > 0) {
             const mid = latlngs[Math.floor(latlngs.length / 2)]
             const labelIcon = Lx.divIcon({
@@ -199,6 +235,50 @@ export default function RouteMap({
       legPolyRef.current.push(poly)
     }
   }, [stops, mapReady])
+
+  // ── Map notes ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current || !L) return
+    const Lx = L
+    const map = mapInstanceRef.current
+
+    noteMarkersRef.current.forEach(m => m.remove())
+    noteMarkersRef.current = []
+
+    for (const note of (mapNotes ?? [])) {
+      const c = NOTE_COLORS[note.color] ?? NOTE_COLORS.yellow
+      const escaped = note.content
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\n/g, '<br>')
+      const icon = Lx.divIcon({
+        className: '',
+        html: `<div style="
+          background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
+          padding:6px 8px;width:130px;min-height:36px;
+          font-size:11px;line-height:1.45;
+          box-shadow:2px 3px 8px rgba(0,0,0,0.22);
+          word-break:break-word;cursor:pointer;
+          font-family:system-ui,-apple-system,sans-serif;color:#111;
+          position:relative;
+        ">${escaped || '<span style="color:#999;font-style:italic">Empty note</span>'}<div style="
+          position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+          width:0;height:0;
+          border-left:6px solid transparent;border-right:6px solid transparent;
+          border-top:6px solid ${c.border};
+        "></div></div>`,
+        iconSize: [130, 52],
+        iconAnchor: [65, 52],
+      })
+      const marker = Lx.marker([note.lat, note.lng], { icon, zIndexOffset: 500 }).addTo(map)
+      marker.on('click', (e) => {
+        Lx.DomEvent.stopPropagation(e)
+        onNoteClickRef.current?.(note, e.originalEvent.clientX, e.originalEvent.clientY)
+      })
+      noteMarkersRef.current.push(marker)
+    }
+  }, [mapNotes, mapReady])
 
   return <div ref={mapRef} className="w-full h-full rounded-xl overflow-hidden" />
 }

@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { createClient } from '@/lib/supabase/client'
-import { Stop, TripRouteWithCreator, TripRoute } from '@/types/database'
+import { Stop, TripRouteWithCreator, TripRoute, MapNote, NoteColor } from '@/types/database'
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors, DragEndEvent
 } from '@dnd-kit/core'
@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, GripVertical, Trash2, ChevronRight, MapPin, Search, X, Loader2, Route,
-  MoreHorizontal, Copy
+  MoreHorizontal, Copy, StickyNote, Trash
 } from 'lucide-react'
 import { geocode, GeoResult } from '@/lib/nominatim'
 import StopPanel from './StopPanel'
@@ -174,6 +174,108 @@ function CreatorAvatar({ name, url }: { name: string | null; url: string | null 
   )
 }
 
+
+// ── Note color constants ──────────────────────────────────────────────────────
+const NOTE_COLOR_OPTIONS: { value: NoteColor; bg: string; ring: string }[] = [
+  { value: 'yellow', bg: 'bg-yellow-200', ring: 'ring-yellow-500' },
+  { value: 'green',  bg: 'bg-green-200',  ring: 'ring-green-500' },
+  { value: 'red',    bg: 'bg-red-200',    ring: 'ring-red-500'   },
+  { value: 'blue',   bg: 'bg-blue-200',   ring: 'ring-blue-500'  },
+]
+
+// ── Inline note edit popup ─────────────────────────────────────────────────────
+function NoteEditPopup({
+  note, x, y, canEdit, onContentChange, onColorChange, onClose, onDelete,
+}: {
+  note: MapNote
+  x: number
+  y: number
+  canEdit: boolean
+  onContentChange: (content: string) => void
+  onColorChange: (color: NoteColor) => void
+  onClose: () => void
+  onDelete: () => void
+}) {
+  const ref = useRef<HTMLDivElement>(null)
+
+  // Clamp position so popup doesn't go off-screen
+  const popupW = 220
+  const popupH = 180
+  const left = Math.min(Math.max(x - popupW / 2, 8), window.innerWidth  - popupW - 8)
+  const top  = Math.min(Math.max(y - popupH - 14, 8), window.innerHeight - popupH - 8)
+
+  // Close on click outside
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose()
+    }
+    function handleKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    document.addEventListener('mousedown', handle)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handle)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [onClose])
+
+  const NOTE_BG: Record<NoteColor, string> = {
+    yellow: 'bg-yellow-50 border-yellow-300',
+    green:  'bg-green-50  border-green-300',
+    red:    'bg-red-50    border-red-300',
+    blue:   'bg-blue-50   border-blue-300',
+  }
+
+  return (
+    <div
+      ref={ref}
+      className={`fixed z-[2000] w-56 rounded-xl border shadow-xl p-3 flex flex-col gap-2.5 ${
+        NOTE_BG[(note.color as NoteColor) ?? 'yellow']
+      }`}
+      style={{ left, top }}
+    >
+      {/* Color picker + close */}
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1.5">
+          {NOTE_COLOR_OPTIONS.map(c => (
+            <button
+              key={c.value}
+              disabled={!canEdit}
+              onClick={() => onColorChange(c.value)}
+              className={`w-5 h-5 rounded-full ${c.bg} border border-white/60 transition-all ${
+                note.color === c.value ? `ring-2 ${c.ring} ring-offset-1` : 'hover:scale-110'
+              } disabled:opacity-50 disabled:cursor-default`}
+            />
+          ))}
+        </div>
+        <button onClick={onClose} className="p-0.5 rounded hover:bg-black/10">
+          <X className="w-3.5 h-3.5 text-gray-500" />
+        </button>
+      </div>
+
+      {/* Content textarea */}
+      <textarea
+        autoFocus
+        disabled={!canEdit}
+        value={note.content}
+        onChange={e => onContentChange(e.target.value)}
+        placeholder={canEdit ? 'Write a note…' : ''}
+        rows={4}
+        className="w-full text-sm resize-none bg-transparent border-none outline-none placeholder-gray-400 text-gray-800 leading-snug disabled:cursor-default"
+      />
+
+      {/* Delete */}
+      {canEdit && (
+        <button
+          onClick={onDelete}
+          className="self-start flex items-center gap-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-100 rounded px-1.5 py-0.5 transition-colors"
+        >
+          <Trash className="w-3 h-3" /> Delete note
+        </button>
+      )}
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId }: Props) {
   const supabase = createClient()
@@ -186,6 +288,16 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
   const [routeMenuId, setRouteMenuId] = useState<string | null>(null)
   const [copyTarget, setCopyTarget] = useState<TripRoute | null>(null)
   const [creatingRoute, setCreatingRoute] = useState(false)
+
+  // Note state
+  const [mapNotes, setMapNotes] = useState<MapNote[]>([])
+  const [placingNote, setPlacingNote] = useState(false)
+  const [editingNote, setEditingNote] = useState<{
+    note: MapNote; x: number; y: number
+  } | null>(null)
+  const editNoteContentRef = useRef('')
+  const editNoteColorRef   = useRef<NoteColor>('yellow')
+  const editNoteTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Stop state
   const [stops, setStops] = useState<Stop[]>([])
@@ -210,15 +322,14 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setPanelStop(null)
     setPanelSegment(null)
     setSegmentDistances([])
-    supabase
-      .from('stops')
-      .select('*')
-      .eq('route_id', activeRouteId)
-      .order('order_index', { ascending: true })
-      .then(({ data }) => {
-        setStops(data ?? [])
-        setLoadingStops(false)
-      })
+    Promise.all([
+      supabase.from('stops').select('*').eq('route_id', activeRouteId).order('order_index', { ascending: true }),
+      supabase.from('map_notes').select('*').eq('route_id', activeRouteId).order('created_at', { ascending: true }),
+    ]).then(([stopsRes, notesRes]) => {
+      setStops(stopsRes.data ?? [])
+      setMapNotes(notesRes.data ?? [])
+      setLoadingStops(false)
+    })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRouteId])
 
@@ -329,6 +440,57 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
   const updateStopRouteNotes = useCallback((id: string, route_notes: string) => {
     setStops(prev => prev.map(s => s.id === id ? { ...s, route_notes } : s))
   }, [])
+
+
+  // ── Note CRUD ───────────────────────────────────────────────────────────────
+  async function createNote(lat: number, lng: number) {
+    if (!activeRouteId) return
+    const { data, error } = await supabase
+      .from('map_notes')
+      .insert({ route_id: activeRouteId, trip_id: tripId, lat, lng, content: '', color: 'yellow', created_by: currentUserId })
+      .select()
+      .single()
+    if (!error && data) {
+      setMapNotes(prev => [...prev, data])
+      setPlacingNote(false)
+      // Open edit popup centered on screen
+      setEditingNote({ note: data, x: window.innerWidth / 2, y: window.innerHeight / 2 })
+      editNoteContentRef.current = ''
+      editNoteColorRef.current = 'yellow'
+    }
+  }
+
+  function openNoteEdit(note: MapNote, clientX: number, clientY: number) {
+    setEditingNote({ note, x: clientX, y: clientY })
+    editNoteContentRef.current = note.content
+    editNoteColorRef.current = note.color as NoteColor
+  }
+
+  function saveNoteImmediate(id: string, content: string, color: NoteColor) {
+    supabase.from('map_notes').update({ content, color }).eq('id', id)
+    setMapNotes(prev => prev.map(n => n.id === id ? { ...n, content, color } : n))
+  }
+
+  function scheduleNoteSave(id: string, content: string, color: NoteColor) {
+    if (editNoteTimerRef.current) clearTimeout(editNoteTimerRef.current)
+    editNoteTimerRef.current = setTimeout(() => saveNoteImmediate(id, content, color), 800)
+  }
+
+  function closeNoteEdit() {
+    if (editingNote) {
+      if (editNoteTimerRef.current) {
+        clearTimeout(editNoteTimerRef.current)
+        saveNoteImmediate(editingNote.note.id, editNoteContentRef.current, editNoteColorRef.current)
+      }
+    }
+    setEditingNote(null)
+  }
+
+  async function deleteNote(id: string) {
+    await supabase.from('map_notes').delete().eq('id', id)
+    setMapNotes(prev => prev.filter(n => n.id !== id))
+    setEditingNote(null)
+  }
 
   // ── Copy route callback ─────────────────────────────────────────────────────
   function handleCopied(
@@ -582,8 +744,29 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
                   setPanelStop(null)
                   setSelectedId(null)
                 }}
+                mapNotes={mapNotes}
+                placingNote={placingNote}
+                onNoteCreate={createNote}
+                onNoteClick={openNoteEdit}
               />
             </div>
+            {/* Note placement toggle */}
+            {canEdit && (
+              <div className="absolute top-4 right-4 z-[1000]">
+                <button
+                  onClick={() => { setPlacingNote(p => !p); setEditingNote(null) }}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border transition-all ${
+                    placingNote
+                      ? 'bg-amber-400 border-amber-500 text-amber-900 hover:bg-amber-300'
+                      : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+                  }`}
+                  title={placingNote ? 'Click map to place note (Esc to cancel)' : 'Add sticky note'}
+                >
+                  <StickyNote className="w-3.5 h-3.5" />
+                  {placingNote ? 'Click to place…' : 'Add note'}
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Stop detail panel */}
@@ -608,6 +791,30 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
             />
           )}
         </div>
+      )}
+
+      {/* Note inline edit popup */}
+      {editingNote && (
+        <NoteEditPopup
+          note={editingNote.note}
+          x={editingNote.x}
+          y={editingNote.y}
+          canEdit={canEdit}
+          onContentChange={content => {
+            editNoteContentRef.current = content
+            setEditingNote(prev => prev ? { ...prev, note: { ...prev.note, content } } : null)
+            setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, content } : n))
+            scheduleNoteSave(editingNote.note.id, content, editNoteColorRef.current)
+          }}
+          onColorChange={color => {
+            editNoteColorRef.current = color
+            setEditingNote(prev => prev ? { ...prev, note: { ...prev.note, color } } : null)
+            setMapNotes(prev => prev.map(n => n.id === editingNote.note.id ? { ...n, color } : n))
+            saveNoteImmediate(editingNote.note.id, editNoteContentRef.current, color)
+          }}
+          onClose={closeNoteEdit}
+          onDelete={() => deleteNote(editingNote.note.id)}
+        />
       )}
 
       {/* Copy route modal */}

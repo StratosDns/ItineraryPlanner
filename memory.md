@@ -23,6 +23,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `master.sql` | Full idempotent schema — clean project start | Fresh DB only |
 | `run1.sql` | Storage bucket + storage RLS | Existing DB missing storage setup |
 | `run2.sql` | `route_notes` on stops · trip_members RLS recursion fix · `routes` table + RLS · `route_id` FK on stops | Existing DB after run1 |
+| `run3.sql` | `map_notes` table + RLS (sticky notes per route, with lat/lng/color/content) | Existing DB after run2 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -98,7 +99,8 @@ src/
 supabase/
 ├── master.sql                 Full schema — use for fresh DB setup
 ├── run1.sql                   Storage bucket — run on existing DB if not yet applied
-└── run2.sql                   Routes table + stops.route_notes/route_id — run after run1
+├── run2.sql                   Routes table + stops.route_notes/route_id — run after run1
+└── run3.sql                   map_notes table (sticky notes on map) — run after run2
 ```
 
 ---
@@ -112,6 +114,7 @@ supabase/
 | `trip_members` | trip_id, user_id, role (owner/editor/viewer) |
 | `routes` | trip_id, name, created_by (→ profiles), order_index |
 | `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes |
+| `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
 | `fuel_logs` | trip_id, stop_id?, fuel_type, amount, unit, cost, currency, odometer |
 | `costs` | trip_id, stop_id?, category, amount, currency, paid_by |
