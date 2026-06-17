@@ -17,6 +17,7 @@
 --   supabase/run3.sql   — map_notes table (sticky notes on map)
 --   supabase/run4.sql   — fuel columns on costs (fuel_liters, fuel_price_per_unit, fuel_unit, fuel_type, odometer)
 --   supabase/run5.sql   — trip_invite_links table (shareable viewer links with 1-member-slot constraint)
+--   supabase/run6.sql   — is_stay boolean on stops (overnight stay flag)
 --
 -- ADDING FUTURE CHANGES:
 --   1. Create supabase/run(N+1).sql for the incremental change.
@@ -115,6 +116,7 @@ CREATE TABLE IF NOT EXISTS public.stops (
   lng         DOUBLE PRECISION,
   notes       TEXT,
   route_notes  TEXT,        -- notes for the leg FROM this stop to the next
+  is_stay     BOOLEAN NOT NULL DEFAULT FALSE,  -- marks stop as an overnight stay
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

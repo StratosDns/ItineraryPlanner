@@ -352,6 +352,7 @@ export type Database = {
           address: string | null
           created_at: string
           id: string
+          is_stay: boolean
           lat: number | null
           lng: number | null
           name: string
@@ -366,6 +367,7 @@ export type Database = {
           address?: string | null
           created_at?: string
           id?: string
+          is_stay?: boolean
           lat?: number | null
           lng?: number | null
           name: string
@@ -380,6 +382,7 @@ export type Database = {
           address?: string | null
           created_at?: string
           id?: string
+          is_stay?: boolean
           lat?: number | null
           lng?: number | null
           name?: string

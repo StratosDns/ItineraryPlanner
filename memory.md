@@ -26,6 +26,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `run3.sql` | `map_notes` table + RLS (sticky notes per route, with lat/lng/color/content) | Existing DB after run2 |
 | `run4.sql` | Fuel metadata columns on `costs` table (`fuel_liters`, `fuel_price_per_unit`, `fuel_unit`, `fuel_type`, `odometer`) | Existing DB after run3 |
 | `run5.sql` | `trip_invite_links` table — shareable viewer links with 1-member-slot constraint | Existing DB after run4 |
+| `run6.sql` | `is_stay` boolean column on `stops` — marks a stop as an overnight stay | Existing DB after run5 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -125,7 +126,7 @@ supabase/
 | `trips` | id, title, description, owner_id |
 | `trip_members` | trip_id, user_id, role (owner/editor/viewer) |
 | `routes` | trip_id, name, created_by (→ profiles), order_index |
-| `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes |
+| `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes, is_stay (bool, default false) |
 | `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
 | `fuel_logs` | **DEPRECATED for new entries** — legacy table, not used by current UI |

@@ -13,7 +13,7 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, GripVertical, Trash2, ChevronRight, MapPin, Search, X, Loader2, Route,
-  MoreHorizontal, Copy, StickyNote, Trash
+  MoreHorizontal, Copy, StickyNote, Trash, Moon
 } from 'lucide-react'
 import { geocode, GeoResult } from '@/lib/nominatim'
 import StopPanel from './StopPanel'
@@ -38,7 +38,7 @@ interface Props {
 
 // ── Sortable stop row ─────────────────────────────────────────────────────────
 function SortableStop({
-  stop, index, selected, canEdit, onClick, onDelete,
+  stop, index, selected, canEdit, onClick, onDelete, onToggleStay,
 }: {
   stop: Stop
   index: number
@@ -46,9 +46,12 @@ function SortableStop({
   canEdit: boolean
   onClick: () => void
   onDelete: () => void
+  onToggleStay: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: stop.id, disabled: !canEdit })
+
+  const isStay = stop.is_stay ?? false
 
   return (
     <div
@@ -56,9 +59,11 @@ function SortableStop({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-all ${
         selected
-          ? 'bg-blue-50 border-blue-200'
+          ? 'bg-blue-50 border-blue-400'
           : isDragging
           ? 'bg-white border-gray-300 shadow-md opacity-90'
+          : isStay
+          ? 'bg-blue-50/60 border-blue-400 hover:border-blue-500'
           : 'bg-white border-gray-200 hover:border-gray-300'
       }`}
       onClick={onClick}
@@ -74,7 +79,7 @@ function SortableStop({
         </div>
       )}
       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 ${
-        selected ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'
+        selected ? 'bg-blue-600 text-white' : isStay ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
       }`}>
         {index + 1}
       </div>
@@ -82,6 +87,20 @@ function SortableStop({
         <p className="text-sm font-medium text-gray-900 truncate">{stop.name}</p>
         {stop.address && <p className="text-xs text-gray-400 truncate">{stop.address}</p>}
       </div>
+
+      {/* Stay toggle */}
+      <button
+        title={isStay ? 'Remove stay' : 'Mark as stay'}
+        onClick={e => { e.stopPropagation(); onToggleStay() }}
+        className={`p-1 rounded-lg shrink-0 transition-colors ${
+          isStay
+            ? 'text-blue-600 bg-blue-100 hover:bg-blue-200'
+            : 'text-gray-300 hover:text-blue-500 hover:bg-blue-50'
+        }`}
+      >
+        <Moon className="w-3.5 h-3.5" />
+      </button>
+
       <ChevronRight className="w-3.5 h-3.5 text-gray-300 shrink-0" />
       {canEdit && (
         <button
@@ -439,6 +458,12 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setStops(prev => prev.map(s => s.id === id ? { ...s, route_notes } : s))
   }, [])
 
+  async function toggleStay(id: string, current: boolean) {
+    const next = !current
+    setStops(prev => prev.map(s => s.id === id ? { ...s, is_stay: next } : s))
+    await supabase.from('stops').update({ is_stay: next }).eq('id', id)
+  }
+
   // ── Note CRUD ───────────────────────────────────────────────────────────────
   async function createNote(lat: number, lng: number) {
     if (!activeRouteId) return
@@ -740,6 +765,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
                               setPanelSegment(null)
                             }}
                             onDelete={() => deleteStop(stop.id)}
+                            onToggleStay={() => toggleStay(stop.id, stop.is_stay ?? false)}
                           />
                         </div>
                       ))}
