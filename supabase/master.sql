@@ -16,6 +16,7 @@
 --   supabase/run2.sql   — routes table, stops.route_notes / route_id
 --   supabase/run3.sql   — map_notes table (sticky notes on map)
 --   supabase/run4.sql   — fuel columns on costs (fuel_liters, fuel_price_per_unit, fuel_unit, fuel_type, odometer)
+--   supabase/run5.sql   — trip_invite_links table (shareable viewer links with 1-member-slot constraint)
 --
 -- ADDING FUTURE CHANGES:
 --   1. Create supabase/run(N+1).sql for the incremental change.
@@ -492,6 +493,51 @@ CREATE POLICY "attachments: editors+ can delete"
         AND public.my_trip_role(s.trip_id) IN ('owner', 'editor')
     )
   );
+
+-- =============================================================================
+-- TRIP INVITE LINKS (run5.sql)
+-- =============================================================================
+-- Shareable viewer links. Each link allows unlimited anonymous views until
+-- expiry. Only ONE person can claim the member slot (member_claimed_by).
+-- Token validation is always done server-side using the service role key.
+
+CREATE TABLE IF NOT EXISTS public.trip_invite_links (
+  id                  UUID        PRIMARY KEY DEFAULT uuid_generate_v4(),
+  trip_id             UUID        NOT NULL REFERENCES public.trips(id) ON DELETE CASCADE,
+  token               TEXT        NOT NULL UNIQUE DEFAULT encode(gen_random_bytes(32), 'hex'),
+  label               TEXT,
+  created_by          UUID        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at          TIMESTAMPTZ,
+  member_claimed_by   UUID        REFERENCES auth.users(id) ON DELETE SET NULL,
+  member_claimed_at   TIMESTAMPTZ,
+  role                TEXT        NOT NULL DEFAULT 'viewer' CHECK (role = 'viewer')
+);
+
+CREATE INDEX IF NOT EXISTS idx_invite_links_trip  ON public.trip_invite_links(trip_id);
+CREATE INDEX IF NOT EXISTS idx_invite_links_token ON public.trip_invite_links(token);
+
+ALTER TABLE public.trip_invite_links ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Owner can read invite links" ON public.trip_invite_links;
+CREATE POLICY "Owner can read invite links"
+  ON public.trip_invite_links FOR SELECT TO authenticated
+  USING (public.my_trip_role(trip_id) = 'owner');
+
+DROP POLICY IF EXISTS "Owner can create invite links" ON public.trip_invite_links;
+CREATE POLICY "Owner can create invite links"
+  ON public.trip_invite_links FOR INSERT TO authenticated
+  WITH CHECK (public.my_trip_role(trip_id) = 'owner');
+
+DROP POLICY IF EXISTS "Owner can update invite links" ON public.trip_invite_links;
+CREATE POLICY "Owner can update invite links"
+  ON public.trip_invite_links FOR UPDATE TO authenticated
+  USING (public.my_trip_role(trip_id) = 'owner');
+
+DROP POLICY IF EXISTS "Owner can delete invite links" ON public.trip_invite_links;
+CREATE POLICY "Owner can delete invite links"
+  ON public.trip_invite_links FOR DELETE TO authenticated
+  USING (public.my_trip_role(trip_id) = 'owner');
 
 -- =============================================================================
 -- END

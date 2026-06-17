@@ -1,13 +1,15 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { MapPin, Loader2 } from 'lucide-react'
 
 export default function RegisterPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const joinToken = searchParams.get('joinToken')
   const supabase = createClient()
 
   const [email, setEmail] = useState('')
@@ -22,12 +24,18 @@ export default function RegisterPage() {
     setError(null)
     setLoading(true)
 
+    // If joining via invite link, route the callback through /auth/callback?joinToken=...
+    // so we can claim the member slot immediately after email verification.
+    const callbackUrl = joinToken
+      ? `${window.location.origin}/auth/callback?joinToken=${joinToken}`
+      : `${window.location.origin}/auth/callback`
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
       options: {
         data: { display_name: displayName },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
+        emailRedirectTo: callbackUrl,
       },
     })
 
@@ -48,6 +56,11 @@ export default function RegisterPage() {
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+          {joinToken && (
+            <div className="mb-5 px-4 py-3 rounded-lg bg-blue-50 border border-blue-100 text-sm text-blue-700">
+              Create an account to join this trip as a viewer.
+            </div>
+          )}
           <h1 className="text-xl font-semibold text-gray-900 mb-6">Create account</h1>
 
           {done ? (

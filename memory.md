@@ -25,6 +25,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `run2.sql` | `route_notes` on stops · trip_members RLS recursion fix · `routes` table + RLS · `route_id` FK on stops | Existing DB after run1 |
 | `run3.sql` | `map_notes` table + RLS (sticky notes per route, with lat/lng/color/content) | Existing DB after run2 |
 | `run4.sql` | Fuel metadata columns on `costs` table (`fuel_liters`, `fuel_price_per_unit`, `fuel_unit`, `fuel_type`, `odometer`) | Existing DB after run3 |
+| `run5.sql` | `trip_invite_links` table — shareable viewer links with 1-member-slot constraint | Existing DB after run4 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -75,14 +76,22 @@ src/
 │   │   └── page.tsx           Trip grid
 │   ├── trips/[tripId]/
 │   │   └── page.tsx           Trip detail (server, fetches data)
-│   └── api/invite/route.ts    Invite member (service role)
+│   ├── api/invite/route.ts    Invite member by email (service role)
+│   ├── api/invite-link/route.ts          POST: generate viewer link
+│   ├── api/invite-link/[id]/route.ts     PATCH/DELETE: update label / revoke link
+│   ├── api/join/[token]/route.ts         GET: validate token (public)
+│   ├── api/join/[token]/claim/route.ts   POST: claim member slot (authenticated)
+│   └── api/join/[token]/trip-data/route.ts  GET: fetch route+stops for viewer (public, token-gated)
+├── app/
+│   ├── join/[token]/page.tsx  Landing page: visitor vs sign-up choice
+│   └── viewer/[token]/page.tsx  Anonymous read-only route view (no auth)
 ├── components/
 │   ├── TripClient.tsx         Tab shell (Route/Costs/Members) — Fuel tab removed
 │   ├── CreateTripButton.tsx   Modal to create trip
 │   ├── SignOutButton.tsx      Client sign-out
 │   ├── FuelTab.tsx            DEPRECATED — not imported, fuel now in CostsTab under Category=Fuel
 │   ├── CostsTab.tsx           Expense + split CRUD (incl. fuel sub-form when category=fuel)
-│   ├── MembersTab.tsx         Member management
+│   ├── MembersTab.tsx         Member management + viewer link generator/manager
 │   ├── map/RouteMap.tsx       Leaflet map (dynamic import, no SSR)
 │   └── stops/
 │       ├── StopsTab.tsx       Route tabs + stop list + map
@@ -94,7 +103,7 @@ src/
 │   └── supabase/
 │       ├── client.ts          Browser client
 │       ├── server.ts          Server component client
-│       └── middleware.ts      Session refresh + auth redirect
+│       └── middleware.ts      Session refresh + auth redirect (public paths include /join/, /viewer/, /api/join/)
 ├── middleware.ts              Route protection
 └── types/database.ts         All DB types + convenience aliases
 supabase/
@@ -102,7 +111,8 @@ supabase/
 ├── run1.sql                   Storage bucket — run on existing DB if not yet applied
 ├── run2.sql                   Routes table + stops.route_notes/route_id — run after run1
 ├── run3.sql                   map_notes table (sticky notes on map) — run after run2
-└── run4.sql                   fuel metadata columns on costs table — run after run3
+├── run4.sql                   fuel metadata columns on costs table — run after run3
+└── run5.sql                   trip_invite_links table — run after run4
 ```
 
 ---
@@ -121,8 +131,10 @@ supabase/
 | `fuel_logs` | **DEPRECATED for new entries** — legacy table, not used by current UI |
 | `costs` | trip_id, stop_id?, category, amount, currency, paid_by, fuel_liters?, fuel_price_per_unit?, fuel_unit?, fuel_type?, odometer? |
 | `cost_splits` | cost_id, user_id, share_amount, settled |
+| `trip_invite_links` | id, trip_id, token (32-byte hex unique), label, created_by, created_at, expires_at (nullable), member_claimed_by (nullable), member_claimed_at, role ('viewer') |
 
 **RLS:** All tables protected. `my_trip_role(trip_id)` helper function used in policies.
+**`trip_invite_links` RLS:** Owner can INSERT/SELECT/UPDATE/DELETE their trip's links. Token validation always done server-side with service role (anon cannot read the table).
 
 ---
 
@@ -157,6 +169,14 @@ supabase/
 - **Cost splits** — equal or custom. Per-split settled toggle. Balance summary (who owes who).
 - **No SSR for Leaflet** — `dynamic(() => import(...), { ssr: false })` used to avoid window-not-defined errors.
 - **Sticky notes draggable** — `RouteMap` accepts `canEditNotes` and `onNoteMove` props. When `canEditNotes=true`, note markers are `draggable: true` and fire `dragend` → `onNoteMove(id, lat, lng)` → Supabase update. Auto-saves on drop. Uses stable `useRef` pattern to avoid stale callback captures.
+- **Viewer invite links** — `trip_invite_links` table stores shareable tokens. Key design decisions:
+  - Unlimited anonymous viewers per link (no consumption on view). Link remains valid until `expires_at` or revoked.
+  - **One member slot per link**: `member_claimed_by` is set once. Subsequent signups via the same link can still view anonymously but are NOT added to `trip_members`.
+  - Token = 32-byte hex via `gen_random_bytes(32)`. Token is the access credential for `/viewer/[token]` and `/join/[token]`.
+  - Viewer page (`/viewer/[token]`) is fully public (no auth). It fetches routes/stops via service role using the token, stripping `notes` and `route_notes` fields. Map notes (sticky notes) ARE visible.
+  - Signup flow: `/register?joinToken=xxx` → `emailRedirectTo` includes `joinToken` → callback at `/auth/callback?joinToken=xxx` → inline claim logic runs immediately after email verification → redirect to trip.
+  - Authenticated users visiting `/join/[token]` see a "Join as viewer" button backed by a Server Action (inline claim, no HTTP call to self).
+  - Public paths that bypass auth middleware: `/join/`, `/viewer/`, `/api/join/`.
 
 ---
 
