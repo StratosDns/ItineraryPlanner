@@ -127,17 +127,28 @@ export default function RouteMap({
     if (valid.length === 0) return
 
     valid.forEach((stop, i) => {
-      const sel = stop.id === selectedStopId
+      const sel  = stop.id === selectedStopId
+      const stay = stop.is_stay ?? false
+      // Colour logic:
+      //   selected            → bright blue bg, light-blue border, scaled up
+      //   stay (not selected) → bright blue bg, amber border, slightly scaled
+      //   default             → dark navy bg, white border
+      const bg     = (sel || stay) ? '#2563eb' : '#1e40af'
+      const border = sel  ? '#93c5fd'
+                   : stay ? '#f59e0b'
+                   :        'white'
+      const scale  = sel ? 'scale(1.25)' : stay ? 'scale(1.1)' : 'none'
+      const shadow = stay ? '0 2px 8px rgba(37,99,235,0.5)' : '0 2px 6px rgba(0,0,0,0.3)'
       const icon = Lx.divIcon({
         className: '',
         html: `<div style="
           width:28px;height:28px;border-radius:50%;
-          background:${sel ? '#2563eb' : '#1e40af'};
-          border:2px solid ${sel ? '#93c5fd' : 'white'};
+          background:${bg};
+          border:2.5px solid ${border};
           color:white;font-size:11px;font-weight:600;
           display:flex;align-items:center;justify-content:center;
-          box-shadow:0 2px 6px rgba(0,0,0,0.3);
-          ${sel ? 'transform:scale(1.2);' : ''}
+          box-shadow:${shadow};
+          transform:${scale};
         ">${i + 1}</div>`,
         iconSize: [28, 28],
         iconAnchor: [14, 14],
