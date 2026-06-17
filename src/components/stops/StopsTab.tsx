@@ -462,14 +462,17 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     editNoteColorRef.current = note.color as NoteColor
   }
 
-  function saveNoteImmediate(id: string, content: string, color: NoteColor) {
-    supabase.from('map_notes').update({ content, color }).eq('id', id)
+  async function saveNoteImmediate(id: string, content: string, color: NoteColor) {
+    await supabase.from('map_notes').update({ content, color }).eq('id', id)
     setMapNotes(prev => prev.map(n => n.id === id ? { ...n, content, color } : n))
   }
 
   function scheduleNoteSave(id: string, content: string, color: NoteColor) {
     if (editNoteTimerRef.current) clearTimeout(editNoteTimerRef.current)
-    editNoteTimerRef.current = setTimeout(() => saveNoteImmediate(id, content, color), 800)
+    editNoteTimerRef.current = setTimeout(() => {
+      editNoteTimerRef.current = null
+      saveNoteImmediate(id, content, color)
+    }, 800)
   }
 
   function closeNoteEdit() {
