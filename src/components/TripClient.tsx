@@ -70,32 +70,30 @@ export default function TripClient({ trip, initialRoutes, members, currentUserId
         </div>
       </header>
 
-      {/* Tab content */}
-      <div className="flex-1">
-        {activeTab === 'route' && (
-          <StopsTab
-            tripId={trip.id}
-            initialRoutes={initialRoutes}
-            canEdit={canEdit}
-            currentUserId={currentUserId}
-          />
-        )}
-        {activeTab === 'costs' && (
-          <CostsTab
-            tripId={trip.id}
-            members={members}
-            currentUserId={currentUserId}
-            canEdit={canEdit}
-          />
-        )}
-        {activeTab === 'members' && (
-          <MembersTab
-            tripId={trip.id}
-            members={members}
-            currentUserId={currentUserId}
-            role={role}
-          />
-        )}
+      {/* Tab content — always mounted, CSS-hidden when inactive to prevent map recalculation */}
+      <div className={`flex-1 ${activeTab === 'route' ? '' : 'hidden'}`}>
+        <StopsTab
+          tripId={trip.id}
+          initialRoutes={initialRoutes}
+          canEdit={canEdit}
+          currentUserId={currentUserId}
+        />
+      </div>
+      <div className={`flex-1 ${activeTab === 'costs' ? '' : 'hidden'}`}>
+        <CostsTab
+          tripId={trip.id}
+          members={members}
+          currentUserId={currentUserId}
+          canEdit={canEdit}
+        />
+      </div>
+      <div className={`flex-1 ${activeTab === 'members' ? '' : 'hidden'}`}>
+        <MembersTab
+          tripId={trip.id}
+          members={members}
+          currentUserId={currentUserId}
+          role={role}
+        />
       </div>
     </div>
   )
