@@ -47,6 +47,7 @@ export default function RouteMap({
   const noteMarkersRef = useRef<import('leaflet').Marker[]>([])
   const abortRef       = useRef<AbortController | null>(null)
   const [mapReady, setMapReady] = useState(false)
+  const [zoomLevel, setZoomLevel] = useState(13)
 
   // Stable callback refs — prevent effects from re-running on every render
   const onMarkerClickRef  = useRef(onMarkerClick)
@@ -101,6 +102,8 @@ export default function RouteMap({
       })
 
       mapInstanceRef.current = map
+      setZoomLevel(map.getZoom())
+      map.on('zoomend', () => setZoomLevel(map.getZoom()))
       setMapReady(true)
     }
     init()
@@ -269,12 +272,22 @@ export default function RouteMap({
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
         .replace(/\n/g, '<br>')
+
+      // Zoom-relative sizing: scale by 2^(zoom-13), clamped to [0.4, 4]
+      const scale = note.is_zoom_relative
+        ? Math.min(4, Math.max(0.4, Math.pow(2, zoomLevel - 13)))
+        : 1
+      const w  = Math.round(130 * scale)
+      const h  = Math.round(52  * scale)
+      const fs = Math.round(11  * scale)
+      const pad = Math.round(6  * scale)
+
       const icon = Lx.divIcon({
         className: '',
         html: `<div style="
           background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
-          padding:6px 8px;width:130px;min-height:36px;
-          font-size:11px;line-height:1.45;
+          padding:${pad}px ${Math.round(8*scale)}px;width:${w}px;min-height:${Math.round(36*scale)}px;
+          font-size:${fs}px;line-height:1.45;
           box-shadow:2px 3px 8px rgba(0,0,0,0.22);
           word-break:break-word;cursor:pointer;
           font-family:system-ui,-apple-system,sans-serif;color:#111;
@@ -285,8 +298,8 @@ export default function RouteMap({
           border-left:6px solid transparent;border-right:6px solid transparent;
           border-top:6px solid ${c.border};
         "></div></div>`,
-        iconSize: [130, 52],
-        iconAnchor: [65, 52],
+        iconSize: [w, h],
+        iconAnchor: [Math.round(w / 2), h],
       })
       const marker = Lx.marker([note.lat, note.lng], {
         icon,
@@ -303,7 +316,7 @@ export default function RouteMap({
       })
       noteMarkersRef.current.push(marker)
     }
-  }, [mapNotes, mapReady])
+  }, [mapNotes, mapReady, zoomLevel])
 
   return <div ref={mapRef} className="w-full h-full rounded-xl overflow-hidden" />
 }

@@ -21,6 +21,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
+          is_zoom_relative: boolean
           lat: number
           lng: number
           route_id: string
@@ -32,6 +33,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_zoom_relative?: boolean
           lat: number
           lng: number
           route_id: string
@@ -43,6 +45,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
+          is_zoom_relative?: boolean
           lat?: number
           lng?: number
           route_id?: string
@@ -68,6 +71,76 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      note_items: {
+        Row: {
+          id: string
+          note_id: string
+          trip_id: string
+          type: 'link' | 'image' | 'text' | 'cost_ref'
+          label: string | null
+          url: string | null
+          content: string | null
+          storage_path: string | null
+          file_url: string | null
+          file_name: string | null
+          cost_id: string | null
+          order_index: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          note_id: string
+          trip_id: string
+          type: 'link' | 'image' | 'text' | 'cost_ref'
+          label?: string | null
+          url?: string | null
+          content?: string | null
+          storage_path?: string | null
+          file_url?: string | null
+          file_name?: string | null
+          cost_id?: string | null
+          order_index?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          note_id?: string
+          trip_id?: string
+          type?: 'link' | 'image' | 'text' | 'cost_ref'
+          label?: string | null
+          url?: string | null
+          content?: string | null
+          storage_path?: string | null
+          file_url?: string | null
+          file_name?: string | null
+          cost_id?: string | null
+          order_index?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "note_items_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "map_notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_items_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "note_items_cost_id_fkey"
+            columns: ["cost_id"]
+            isOneToOne: false
+            referencedRelation: "costs"
             referencedColumns: ["id"]
           },
         ]
@@ -646,4 +719,6 @@ export type TripRouteWithCreator = TripRoute & {
 }
 
 export type MapNote = Tables<'map_notes'>
+export type MapNoteItem = Tables<'note_items'>
 export type NoteColor = 'yellow' | 'green' | 'red' | 'blue'
+export type NoteItemType = 'link' | 'image' | 'text' | 'cost_ref'

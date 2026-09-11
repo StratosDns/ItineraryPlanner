@@ -27,6 +27,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `run4.sql` | Fuel metadata columns on `costs` table (`fuel_liters`, `fuel_price_per_unit`, `fuel_unit`, `fuel_type`, `odometer`) | Existing DB after run3 |
 | `run5.sql` | `trip_invite_links` table — shareable viewer links with 1-member-slot constraint | Existing DB after run4 |
 | `run6.sql` | `is_stay` boolean column on `stops` — marks a stop as an overnight stay | Existing DB after run5 |
+| `run7.sql` | `note_items` table (links/images/text/cost_refs per map note) + `is_zoom_relative` boolean on `map_notes` | Existing DB after run6 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -94,6 +95,8 @@ src/
 │   ├── CostsTab.tsx           Expense + split CRUD (incl. fuel sub-form when category=fuel)
 │   ├── MembersTab.tsx         Member management + viewer link generator/manager
 │   ├── map/RouteMap.tsx       Leaflet map (dynamic import, no SSR)
+│   ├── notes/
+│   │   └── NotePanel.tsx      Per-note side panel (links, images, text, cost refs)
 │   └── stops/
 │       ├── StopsTab.tsx       Route tabs + stop list + map
 │       ├── StopPanel.tsx      Per-stop notes + attachments
@@ -127,7 +130,8 @@ supabase/
 | `trip_members` | trip_id, user_id, role (owner/editor/viewer) |
 | `routes` | trip_id, name, created_by (→ profiles), order_index |
 | `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes, is_stay (bool, default false) |
-| `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by |
+| `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by, is_zoom_relative (bool, default false) |
+| `note_items` | note_id (→ map_notes), trip_id, type (link/image/text/cost_ref), label, url, content, storage_path, file_url, file_name, cost_id (nullable FK → costs), order_index |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
 | `fuel_logs` | **DEPRECATED for new entries** — legacy table, not used by current UI |
 | `costs` | trip_id, stop_id?, category, amount, currency, paid_by, fuel_liters?, fuel_price_per_unit?, fuel_unit?, fuel_type?, odometer? |

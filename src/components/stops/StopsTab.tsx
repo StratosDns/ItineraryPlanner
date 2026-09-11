@@ -13,12 +13,13 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import {
   Plus, GripVertical, Trash2, ChevronRight, MapPin, Search, X, Loader2, Route,
-  MoreHorizontal, Copy, StickyNote, Trash, Moon
+  MoreHorizontal, Copy, StickyNote, Trash, Moon, ZoomIn, Pin,
 } from 'lucide-react'
 import { geocode, GeoResult } from '@/lib/nominatim'
 import StopPanel from './StopPanel'
 import RouteSegmentPanel from './RouteSegmentPanel'
 import CopyRouteModal from './CopyRouteModal'
+import NotePanel from '@/components/notes/NotePanel'
 
 const RouteMap = dynamic(() => import('@/components/map/RouteMap'), {
   ssr: false,
@@ -203,7 +204,7 @@ const NOTE_COLOR_OPTIONS: { value: NoteColor; bg: string; ring: string }[] = [
 
 // ── Inline note edit popup ────────────────────────────────────────────────────
 function NoteEditPopup({
-  note, x, y, canEdit, onContentChange, onColorChange, onClose, onDelete,
+  note, x, y, canEdit, onContentChange, onColorChange, onClose, onDelete, onToggleZoom,
 }: {
   note: MapNote
   x: number
@@ -213,6 +214,7 @@ function NoteEditPopup({
   onColorChange: (color: NoteColor) => void
   onClose: () => void
   onDelete: () => void
+  onToggleZoom: () => void
 }) {
   const ref = useRef<HTMLDivElement>(null)
 
@@ -251,7 +253,7 @@ function NoteEditPopup({
       }`}
       style={{ left, top }}
     >
-      {/* Color picker + close */}
+      {/* Color picker + zoom toggle + close */}
       <div className="flex items-center justify-between">
         <div className="flex gap-1.5">
           {NOTE_COLOR_OPTIONS.map(c => (
@@ -265,9 +267,20 @@ function NoteEditPopup({
             />
           ))}
         </div>
-        <button onClick={onClose} className="p-0.5 rounded hover:bg-black/10">
-          <X className="w-3.5 h-3.5 text-gray-500" />
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onToggleZoom}
+            title={note.is_zoom_relative ? 'Fixed size (click to switch)' : 'Zoom-relative size (click to switch)'}
+            className={`p-0.5 rounded hover:bg-black/10 transition-colors ${
+              note.is_zoom_relative ? 'text-blue-600' : 'text-gray-400'
+            }`}
+          >
+            {note.is_zoom_relative ? <ZoomIn className="w-3.5 h-3.5" /> : <Pin className="w-3.5 h-3.5" />}
+          </button>
+          <button onClick={onClose} className="p-0.5 rounded hover:bg-black/10">
+            <X className="w-3.5 h-3.5 text-gray-500" />
+          </button>
+        </div>
       </div>
 
       {/* Content textarea */}
@@ -312,6 +325,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
   const [mapNotes, setMapNotes] = useState<MapNote[]>([])
   const [placingNote, setPlacingNote] = useState(false)
   const [editingNote, setEditingNote] = useState<{ note: MapNote; x: number; y: number } | null>(null)
+  const [selectedNote, setSelectedNote] = useState<MapNote | null>(null)
   const editNoteContentRef = useRef('')
   const editNoteColorRef   = useRef<NoteColor>('yellow')
   const editNoteTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -485,6 +499,9 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setEditingNote({ note, x: clientX, y: clientY })
     editNoteContentRef.current = note.content
     editNoteColorRef.current = note.color as NoteColor
+    setSelectedNote(note)
+    setPanelStop(null)
+    setPanelSegment(null)
   }
 
   async function saveNoteImmediate(id: string, content: string, color: NoteColor) {
@@ -514,6 +531,15 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     await supabase.from('map_notes').delete().eq('id', id)
     setMapNotes(prev => prev.filter(n => n.id !== id))
     setEditingNote(null)
+    setSelectedNote(null)
+  }
+
+  async function toggleNoteZoom(id: string, current: boolean) {
+    const next = !current
+    setMapNotes(prev => prev.map(n => n.id === id ? { ...n, is_zoom_relative: next } : n))
+    setEditingNote(prev => prev?.note.id === id ? { ...prev, note: { ...prev.note, is_zoom_relative: next } } : prev)
+    setSelectedNote(prev => prev?.id === id ? { ...prev, is_zoom_relative: next } : prev)
+    await supabase.from('map_notes').update({ is_zoom_relative: next }).eq('id', id)
   }
 
   async function moveNote(id: string, lat: number, lng: number) {
@@ -857,6 +883,16 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
             />
           )}
 
+          {/* Note detail panel */}
+          {selectedNote && (
+            <NotePanel
+              note={selectedNote}
+              tripId={tripId}
+              canEdit={canEdit}
+              onClose={() => setSelectedNote(null)}
+            />
+          )}
+
         </div>
       )}
 
@@ -871,6 +907,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
           onColorChange={handleNoteColorChange}
           onClose={closeNoteEdit}
           onDelete={handleNoteDelete}
+          onToggleZoom={() => toggleNoteZoom(editingNote.note.id, editingNote.note.is_zoom_relative ?? false)}
         />
       )}
 
