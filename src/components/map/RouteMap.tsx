@@ -15,25 +15,58 @@ interface Props {
   selectedStopId?: string | null
   onMapClick?: (lat: number, lng: number) => void
   onMarkerClick?: (stop: Stop) => void
-  /** Emits N-1 driving distances in km whenever a route is resolved */
   onRouteUpdate?: (distances: number[]) => void
-  /** Emits the 0-based leg index when a route segment is clicked */
   onSegmentClick?: (index: number) => void
-  /** Sticky notes to render on the map */
   mapNotes?: MapNote[]
-  /** When true the next map click places a new note instead of normal click */
   placingNote?: boolean
-  /** Called with lat/lng when the user places a new note */
   onNoteCreate?: (lat: number, lng: number) => void
-  /** Called when the user clicks an existing note; x/y are viewport coords */
   onNoteClick?: (note: MapNote, clientX: number, clientY: number) => void
-  /** When true, notes can be dragged to new positions */
   canEditNotes?: boolean
-  /** Called after a note is dragged to a new position */
   onNoteMove?: (id: string, lat: number, lng: number) => void
 }
 
 let L: typeof import('leaflet') | null = null
+
+// Build a divIcon for a note at a given zoom scale (1 = base size)
+function buildNoteIcon(
+  Lx: typeof import('leaflet'),
+  note: MapNote,
+  scale: number,
+) {
+  const c   = NOTE_COLORS[note.color] ?? NOTE_COLORS.yellow
+  const w   = Math.round(130 * scale)
+  const h   = Math.round(52  * scale)
+  const fs  = Math.round(11  * scale)
+  const pad = Math.round(6   * scale)
+  const escaped = note.content
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
+  return Lx.divIcon({
+    className: '',
+    html: `<div style="
+      background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
+      padding:${pad}px ${Math.round(8*scale)}px;width:${w}px;min-height:${Math.round(36*scale)}px;
+      font-size:${fs}px;line-height:1.45;
+      box-shadow:2px 3px 8px rgba(0,0,0,0.22);
+      word-break:break-word;cursor:pointer;
+      font-family:system-ui,-apple-system,sans-serif;color:#111;
+      position:relative;
+    ">${escaped || '<span style="color:#999;font-style:italic">Empty note</span>'}<div style="
+      position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+      width:0;height:0;
+      border-left:6px solid transparent;border-right:6px solid transparent;
+      border-top:6px solid ${c.border};
+    "></div></div>`,
+    iconSize:   [w, h],
+    iconAnchor: [Math.round(w / 2), h],
+  })
+}
+
+function noteScale(zoom: number) {
+  return Math.min(4, Math.max(0.4, Math.pow(2, zoom - 13)))
+}
 
 export default function RouteMap({
   stops, selectedStopId, onMapClick, onMarkerClick, onRouteUpdate, onSegmentClick,
@@ -44,12 +77,17 @@ export default function RouteMap({
   const markersRef     = useRef<import('leaflet').Marker[]>([])
   const legPolyRef     = useRef<import('leaflet').Polyline[]>([])
   const labelRef       = useRef<import('leaflet').Marker[]>([])
-  const noteMarkersRef = useRef<import('leaflet').Marker[]>([])
+  // Map from note.id → Marker so the zoom handler can reach them directly
+  const noteMarkersRef = useRef<Map<string, import('leaflet').Marker>>(new Map())
+  // Stable ref to the current notes array for the zoom event closure
+  const mapNotesRef    = useRef<MapNote[]>([])
   const abortRef       = useRef<AbortController | null>(null)
   const [mapReady, setMapReady] = useState(false)
-  const [zoomLevel, setZoomLevel] = useState(13)
 
-  // Stable callback refs — prevent effects from re-running on every render
+  // Keep mapNotesRef in sync without re-running any effect
+  useEffect(() => { mapNotesRef.current = mapNotes ?? [] }, [mapNotes])
+
+  // Stable callback refs
   const onMarkerClickRef  = useRef(onMarkerClick)
   const onRouteUpdateRef  = useRef(onRouteUpdate)
   const onSegmentClickRef = useRef(onSegmentClick)
@@ -67,7 +105,6 @@ export default function RouteMap({
   useEffect(() => { onMapClickRef.current     = onMapClick     }, [onMapClick])
   useEffect(() => { placingNoteRef.current    = placingNote    }, [placingNote])
 
-  // Update cursor when placement mode changes
   useEffect(() => {
     if (!mapRef.current) return
     mapRef.current.style.cursor = placingNote ? 'crosshair' : ''
@@ -92,7 +129,6 @@ export default function RouteMap({
         maxZoom: 19,
       }).addTo(map)
 
-      // Unified click handler: place note OR pass through to onMapClick
       map.on('click', (e) => {
         if (placingNoteRef.current) {
           onNoteCreateRef.current?.(e.latlng.lat, e.latlng.lng)
@@ -101,9 +137,22 @@ export default function RouteMap({
         }
       })
 
+      // ── Real-time zoom scaling for zoom-relative notes ──────────────────
+      // Fires every animation frame during zoom (not just zoomend),
+      // so notes scale smoothly with the map tiles.
+      const Lx = L
+      map.on('zoom', () => {
+        const zoom = map.getZoom()
+        const scale = noteScale(zoom)
+        for (const note of mapNotesRef.current) {
+          if (!note.is_zoom_relative) continue
+          const marker = noteMarkersRef.current.get(note.id)
+          if (!marker) continue
+          marker.setIcon(buildNoteIcon(Lx, note, scale))
+        }
+      })
+
       mapInstanceRef.current = map
-      setZoomLevel(map.getZoom())
-      map.on('zoomend', () => setZoomLevel(map.getZoom()))
       setMapReady(true)
     }
     init()
@@ -115,7 +164,7 @@ export default function RouteMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Stop markers (re-runs on stop list or selection change) ───────────────
+  // ── Stop markers ──────────────────────────────────────────────────────────
   const stopsSigRef = useRef('')
 
   useEffect(() => {
@@ -132,26 +181,18 @@ export default function RouteMap({
     valid.forEach((stop, i) => {
       const sel  = stop.id === selectedStopId
       const stay = stop.is_stay ?? false
-      // Colour logic:
-      //   selected            → bright blue bg, light-blue border, scaled up
-      //   stay (not selected) → bright blue bg, amber border, slightly scaled
-      //   default             → dark navy bg, white border
       const bg     = (sel || stay) ? '#2563eb' : '#1e40af'
-      const border = sel  ? '#93c5fd'
-                   : stay ? '#f59e0b'
-                   :        'white'
+      const border = sel  ? '#93c5fd' : stay ? '#f59e0b' : 'white'
       const scale  = sel ? 'scale(1.25)' : stay ? 'scale(1.1)' : 'none'
       const shadow = stay ? '0 2px 8px rgba(37,99,235,0.5)' : '0 2px 6px rgba(0,0,0,0.3)'
       const icon = Lx.divIcon({
         className: '',
         html: `<div style="
           width:28px;height:28px;border-radius:50%;
-          background:${bg};
-          border:2.5px solid ${border};
+          background:${bg};border:2.5px solid ${border};
           color:white;font-size:11px;font-weight:600;
           display:flex;align-items:center;justify-content:center;
-          box-shadow:${shadow};
-          transform:${scale};
+          box-shadow:${shadow};transform:${scale};
         ">${i + 1}</div>`,
         iconSize: [28, 28],
         iconAnchor: [14, 14],
@@ -170,7 +211,7 @@ export default function RouteMap({
     }
   }, [stops, selectedStopId, mapReady])
 
-  // ── Driving routes (re-runs only when stop list changes) ──────────────────
+  // ── Driving routes ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !L) return
     const Lx = L
@@ -261,51 +302,22 @@ export default function RouteMap({
     if (!mapReady || !mapInstanceRef.current || !L) return
     const Lx = L
     const map = mapInstanceRef.current
+    const zoom = map.getZoom()
 
+    // Remove old markers
     noteMarkersRef.current.forEach(m => m.remove())
-    noteMarkersRef.current = []
+    noteMarkersRef.current.clear()
 
     for (const note of (mapNotes ?? [])) {
-      const c = NOTE_COLORS[note.color] ?? NOTE_COLORS.yellow
-      const escaped = note.content
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/\n/g, '<br>')
+      const scale = note.is_zoom_relative ? noteScale(zoom) : 1
+      const icon  = buildNoteIcon(Lx, note, scale)
 
-      // Zoom-relative sizing: scale by 2^(zoom-13), clamped to [0.4, 4]
-      const scale = note.is_zoom_relative
-        ? Math.min(4, Math.max(0.4, Math.pow(2, zoomLevel - 13)))
-        : 1
-      const w  = Math.round(130 * scale)
-      const h  = Math.round(52  * scale)
-      const fs = Math.round(11  * scale)
-      const pad = Math.round(6  * scale)
-
-      const icon = Lx.divIcon({
-        className: '',
-        html: `<div style="
-          background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
-          padding:${pad}px ${Math.round(8*scale)}px;width:${w}px;min-height:${Math.round(36*scale)}px;
-          font-size:${fs}px;line-height:1.45;
-          box-shadow:2px 3px 8px rgba(0,0,0,0.22);
-          word-break:break-word;cursor:pointer;
-          font-family:system-ui,-apple-system,sans-serif;color:#111;
-          position:relative;
-        ">${escaped || '<span style="color:#999;font-style:italic">Empty note</span>'}<div style="
-          position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
-          width:0;height:0;
-          border-left:6px solid transparent;border-right:6px solid transparent;
-          border-top:6px solid ${c.border};
-        "></div></div>`,
-        iconSize: [w, h],
-        iconAnchor: [Math.round(w / 2), h],
-      })
       const marker = Lx.marker([note.lat, note.lng], {
         icon,
         zIndexOffset: 500,
         draggable: canEditNotes ?? false,
       }).addTo(map)
+
       marker.on('click', (e) => {
         Lx.DomEvent.stopPropagation(e)
         onNoteClickRef.current?.(note, e.originalEvent.clientX, e.originalEvent.clientY)
@@ -314,9 +326,10 @@ export default function RouteMap({
         const { lat, lng } = marker.getLatLng()
         onNoteMoveRef.current?.(note.id, lat, lng)
       })
-      noteMarkersRef.current.push(marker)
+
+      noteMarkersRef.current.set(note.id, marker)
     }
-  }, [mapNotes, mapReady, zoomLevel])
+  }, [mapNotes, mapReady, canEditNotes])
 
   return <div ref={mapRef} className="w-full h-full rounded-xl overflow-hidden" />
 }
