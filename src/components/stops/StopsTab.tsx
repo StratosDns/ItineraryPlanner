@@ -547,6 +547,11 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
     setMapNotes(prev => prev.map(n => n.id === id ? { ...n, lat, lng } : n))
   }
 
+  async function saveNoteScale(id: string, scale: number) {
+    await supabase.from('map_notes').update({ note_scale: scale }).eq('id', id)
+    setMapNotes(prev => prev.map(n => n.id === id ? { ...n, note_scale: scale } : n))
+  }
+
   // ── Copy route callback ─────────────────────────────────────────────────────
   function handleCopied(newRoute: TripRouteWithCreator | null, newStops: Stop[], targetTripId: string) {
     if (newRoute && targetTripId === tripId) {
@@ -840,6 +845,7 @@ export default function StopsTab({ tripId, initialRoutes, canEdit, currentUserId
                 onNoteClick={openNoteEdit}
                 canEditNotes={canEdit}
                 onNoteMove={moveNote}
+                onNoteScaleChange={saveNoteScale}
               />
             </div>
             {/* Note placement toggle */}

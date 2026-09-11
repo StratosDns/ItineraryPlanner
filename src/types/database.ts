@@ -22,6 +22,7 @@ export type Database = {
           created_by: string | null
           id: string
           is_zoom_relative: boolean
+          note_scale: number
           lat: number
           lng: number
           route_id: string
@@ -34,6 +35,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_zoom_relative?: boolean
+          note_scale?: number
           lat: number
           lng: number
           route_id: string
@@ -46,6 +48,7 @@ export type Database = {
           created_by?: string | null
           id?: string
           is_zoom_relative?: boolean
+          note_scale?: number
           lat?: number
           lng?: number
           route_id?: string

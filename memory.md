@@ -28,6 +28,7 @@ All SQL files live directly in `supabase/` — no subdirectories.
 | `run5.sql` | `trip_invite_links` table — shareable viewer links with 1-member-slot constraint | Existing DB after run4 |
 | `run6.sql` | `is_stay` boolean column on `stops` — marks a stop as an overnight stay | Existing DB after run5 |
 | `run7.sql` | `note_items` table (links/images/text/cost_refs per map note) + `is_zoom_relative` boolean on `map_notes` | Existing DB after run6 |
+| `run8.sql` | `note_scale FLOAT DEFAULT 1.0` on `map_notes` — persists per-note user resize multiplier | Existing DB after run7 |
 
 **Naming convention:** `run1.sql`, `run2.sql`, ..., `runN.sql` — sequential integers, no descriptive suffix, directly in `supabase/`.  
 **`master.sql` contract:** Always contains the complete cumulative schema. Every `runN.sql` addition must also be appended to `master.sql`.  
@@ -130,7 +131,7 @@ supabase/
 | `trip_members` | trip_id, user_id, role (owner/editor/viewer) |
 | `routes` | trip_id, name, created_by (→ profiles), order_index |
 | `stops` | trip_id, route_id (→ routes), order_index, name, address, lat, lng, notes, route_notes, is_stay (bool, default false) |
-| `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by, is_zoom_relative (bool, default false) |
+| `map_notes` | route_id, trip_id, lat, lng, content, color (yellow/green/red/blue), created_by, is_zoom_relative (bool, default false), note_scale (float, default 1.0) |
 | `note_items` | note_id (→ map_notes), trip_id, type (link/image/text/cost_ref), label, url, content, storage_path, file_url, file_name, cost_id (nullable FK → costs), order_index |
 | `stop_attachments` | stop_id, file_name, file_url, storage_path, label |
 | `fuel_logs` | **DEPRECATED for new entries** — legacy table, not used by current UI |
@@ -173,6 +174,8 @@ supabase/
 - **Fuel logging** — moved from dedicated `FuelTab` into `CostsTab` under Category=Fuel. Fuel sub-form appears inline when category=fuel. Supports all 3 combinations: liters+price→total, total+price→liters, total+liters→price. Units: L/gal/kWh with adaptive price label. Data stored as `fuel_*` columns on `costs` table (added in run4.sql). `fuel_logs` table is legacy/unused by current UI.
 - **Cost splits** — equal or custom. Per-split settled toggle. Balance summary (who owes who).
 - **No SSR for Leaflet** — `dynamic(() => import(...), { ssr: false })` used to avoid window-not-defined errors.
+- **Sticky notes zoom-relative scaling** — implemented via CSS `transform: scale()` on `marker.getElement()`, NOT by calling `setIcon()` during animation. Approach: Leaflet `zoom` event (every animation frame) → reads `map.getZoom()` → `applyNoteTransform(el, zoom, isZoomRelative, userScale)` which sets `el.style.transform = scale(zoomFactor * userScale)` with `transform-origin: center bottom`. Bottom-center is the `iconAnchor` point, so the geographic coordinate stays pinned. `setIcon()` mid-animation is incorrect — it replaces the DOM element while Leaflet's transform system is in flux.
+- **Sticky notes user-resizable** — drag the bottom-right corner handle. Scale multiplier stored in `note_scale` on `map_notes`. Combined visual scale = `noteZoomScale(zoom) * note_scale` for zoom-relative notes, or just `note_scale` for fixed notes.
 - **Sticky notes draggable** — `RouteMap` accepts `canEditNotes` and `onNoteMove` props. When `canEditNotes=true`, note markers are `draggable: true` and fire `dragend` → `onNoteMove(id, lat, lng)` → Supabase update. Auto-saves on drop. Uses stable `useRef` pattern to avoid stale callback captures.
 - **Viewer invite links** — `trip_invite_links` table stores shareable tokens. Key design decisions:
   - Unlimited anonymous viewers per link (no consumption on view). Link remains valid until `expires_at` or revoked.

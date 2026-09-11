@@ -638,5 +638,12 @@ CREATE POLICY "note-images: editors+ can delete"
   );
 
 -- =============================================================================
+-- run8.sql — note_scale on map_notes (user resize multiplier)
+-- =============================================================================
+
+ALTER TABLE public.map_notes
+  ADD COLUMN IF NOT EXISTS note_scale FLOAT NOT NULL DEFAULT 1.0;
+
+-- =============================================================================
 -- END
 -- =============================================================================
