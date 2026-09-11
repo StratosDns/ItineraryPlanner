@@ -10,7 +10,7 @@ const NOTE_COLORS: Record<string, { bg: string; border: string }> = {
   blue:   { bg: '#bfdbfe', border: '#2563eb' },
 }
 
-// Base note dimensions (at scale 1)
+// Base note dimensions (1× scale)
 const NOTE_W = 130
 const NOTE_H = 52
 
@@ -33,10 +33,12 @@ interface Props {
 let L: typeof import('leaflet') | null = null
 
 /**
- * Build a divIcon at base size (1×). Scale is applied via CSS transform on the
- * marker element itself — never by rebuilding the icon during zoom animation.
- * This keeps Leaflet's anchor calculation stable and allows GPU-accelerated
- * scaling that matches the map tiles frame-for-frame.
+ * Build a divIcon at 1× base size. The OUTER marker element is managed entirely
+ * by Leaflet (it carries translate3d positioning). We apply scale only to the
+ * INNER div (data-note-inner), so we never conflict with Leaflet's transform.
+ *
+ * transform-origin: center bottom on the inner div keeps the geographic anchor
+ * (bottom-center = iconAnchor) fixed while the note grows/shrinks.
  */
 function buildNoteIcon(
   Lx: typeof import('leaflet'),
@@ -60,23 +62,28 @@ function buildNoteIcon(
         border-right:2px solid ${c.border};
         border-bottom:2px solid ${c.border};
         opacity:0.5;
-        pointer-events:auto;
       "
     ></div>
   ` : ''
 
   return Lx.divIcon({
     className: '',
-    html: `<div style="
-      background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
-      padding:6px 8px;
-      width:${NOTE_W}px;min-height:${NOTE_H - 6}px;
-      font-size:11px;line-height:1.45;
-      box-shadow:2px 3px 8px rgba(0,0,0,0.22);
-      word-break:break-word;cursor:pointer;
-      font-family:system-ui,-apple-system,sans-serif;color:#111;
-      position:relative;overflow:hidden;
-    ">
+    // IMPORTANT: data-note-inner is the scaling target — NOT the outer marker element
+    html: `<div
+      data-note-inner="${note.id}"
+      style="
+        background:${c.bg};border:1.5px solid ${c.border};border-radius:3px;
+        padding:6px 8px;
+        width:${NOTE_W}px;min-height:${NOTE_H - 6}px;
+        font-size:11px;line-height:1.45;
+        box-shadow:2px 3px 8px rgba(0,0,0,0.22);
+        word-break:break-word;cursor:pointer;
+        font-family:system-ui,-apple-system,sans-serif;color:#111;
+        position:relative;overflow:hidden;
+        transform-origin:center bottom;
+        will-change:transform;
+      "
+    >
       ${escaped || '<span style="color:#999;font-style:italic">Empty note</span>'}
       <div style="
         position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
@@ -92,28 +99,28 @@ function buildNoteIcon(
 }
 
 /**
- * Zoom-to-scale mapping. At zoom 13 (base) → scale 1.
- * Each zoom level doubles or halves the scale, matching Leaflet tile scaling.
+ * Zoom-to-scale mapping. zoom 13 → scale 1.0.
+ * Each zoom level doubles/halves, matching Leaflet tile scaling.
  */
 function noteZoomScale(zoom: number) {
   return Math.min(4, Math.max(0.3, Math.pow(2, zoom - 13)))
 }
 
 /**
- * Apply the combined transform (zoom factor × user scale) to a marker element.
- * transform-origin: center bottom keeps the geographic anchor (bottom-center)
- * pinned to its lat/lng while scaling upward.
+ * Apply combined scale (zoomFactor × userScale) to the INNER content div.
+ * The outer Leaflet marker element is never touched, so its translate3d
+ * positioning stays intact.
  */
-function applyNoteTransform(
-  el: HTMLElement,
+function applyInnerScale(
+  markerEl: HTMLElement,
   zoom: number,
   isZoomRelative: boolean,
   userScale: number,
 ) {
+  const inner = markerEl.querySelector('[data-note-inner]') as HTMLElement | null
+  if (!inner) return
   const zf = isZoomRelative ? noteZoomScale(zoom) : 1
-  el.style.transformOrigin = 'center bottom'
-  el.style.transform = `scale(${zf * userScale})`
-  el.style.willChange = 'transform'
+  inner.style.transform = `scale(${zf * userScale})`
 }
 
 export default function RouteMap({
@@ -127,42 +134,41 @@ export default function RouteMap({
   const legPolyRef     = useRef<import('leaflet').Polyline[]>([])
   const labelRef       = useRef<import('leaflet').Marker[]>([])
   const noteMarkersRef = useRef<Map<string, import('leaflet').Marker>>(new Map())
-  // Per-note user scale (from note.note_scale, updated by resize drag)
+  // Per-note user scale, updated live during resize drag
   const noteUserScalesRef = useRef<Map<string, number>>(new Map())
-  // Stable ref to the current notes array for event closures
+  // Stable ref to notes for event closures
   const mapNotesRef    = useRef<MapNote[]>([])
   const abortRef       = useRef<AbortController | null>(null)
   const [mapReady, setMapReady] = useState(false)
 
-  // Keep mapNotesRef in sync without triggering any effect
   useEffect(() => { mapNotesRef.current = mapNotes ?? [] }, [mapNotes])
 
-  // Stable callback refs
-  const onMarkerClickRef   = useRef(onMarkerClick)
-  const onRouteUpdateRef   = useRef(onRouteUpdate)
-  const onSegmentClickRef  = useRef(onSegmentClick)
-  const onNoteCreateRef    = useRef(onNoteCreate)
-  const onNoteClickRef     = useRef(onNoteClick)
-  const onNoteMoveRef      = useRef(onNoteMove)
+  // Stable callback refs (no effect re-runs when callbacks change identity)
+  const onMarkerClickRef     = useRef(onMarkerClick)
+  const onRouteUpdateRef     = useRef(onRouteUpdate)
+  const onSegmentClickRef    = useRef(onSegmentClick)
+  const onNoteCreateRef      = useRef(onNoteCreate)
+  const onNoteClickRef       = useRef(onNoteClick)
+  const onNoteMoveRef        = useRef(onNoteMove)
   const onNoteScaleChangeRef = useRef(onNoteScaleChange)
-  const placingNoteRef     = useRef(placingNote)
-  const onMapClickRef      = useRef(onMapClick)
-  useEffect(() => { onMarkerClickRef.current     = onMarkerClick  }, [onMarkerClick])
-  useEffect(() => { onRouteUpdateRef.current     = onRouteUpdate  }, [onRouteUpdate])
-  useEffect(() => { onSegmentClickRef.current    = onSegmentClick }, [onSegmentClick])
-  useEffect(() => { onNoteCreateRef.current      = onNoteCreate   }, [onNoteCreate])
-  useEffect(() => { onNoteClickRef.current       = onNoteClick    }, [onNoteClick])
-  useEffect(() => { onNoteMoveRef.current        = onNoteMove     }, [onNoteMove])
+  const placingNoteRef       = useRef(placingNote)
+  const onMapClickRef        = useRef(onMapClick)
+  useEffect(() => { onMarkerClickRef.current     = onMarkerClick    }, [onMarkerClick])
+  useEffect(() => { onRouteUpdateRef.current     = onRouteUpdate    }, [onRouteUpdate])
+  useEffect(() => { onSegmentClickRef.current    = onSegmentClick   }, [onSegmentClick])
+  useEffect(() => { onNoteCreateRef.current      = onNoteCreate     }, [onNoteCreate])
+  useEffect(() => { onNoteClickRef.current       = onNoteClick      }, [onNoteClick])
+  useEffect(() => { onNoteMoveRef.current        = onNoteMove       }, [onNoteMove])
   useEffect(() => { onNoteScaleChangeRef.current = onNoteScaleChange }, [onNoteScaleChange])
-  useEffect(() => { onMapClickRef.current        = onMapClick     }, [onMapClick])
-  useEffect(() => { placingNoteRef.current       = placingNote    }, [placingNote])
+  useEffect(() => { onMapClickRef.current        = onMapClick       }, [onMapClick])
+  useEffect(() => { placingNoteRef.current       = placingNote      }, [placingNote])
 
   useEffect(() => {
     if (!mapRef.current) return
     mapRef.current.style.cursor = placingNote ? 'crosshair' : ''
   }, [placingNote])
 
-  // ── Init ──────────────────────────────────────────────────────────────────
+  // ── Map init ──────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return
     async function init() {
@@ -189,11 +195,10 @@ export default function RouteMap({
         }
       })
 
-      // ── Zoom-relative note scaling ──────────────────────────────────────
-      // We apply CSS transform directly to each marker's DOM element instead of
-      // calling setIcon() — this avoids Leaflet rebuilding the marker mid-animation
-      // and keeps the anchor perfectly locked to the geographic coordinate.
-      // The 'zoom' event fires every animation frame, giving smooth real-time scaling.
+      // ── Real-time zoom scaling ────────────────────────────────────────────
+      // 'zoom' fires every animation frame during pinch/scroll zoom.
+      // We update the INNER div's CSS transform — the outer marker element
+      // keeps Leaflet's translate3d positioning untouched.
       map.on('zoom', () => {
         const zoom = map.getZoom()
         for (const note of mapNotesRef.current) {
@@ -203,7 +208,7 @@ export default function RouteMap({
           const el = marker.getElement()
           if (!el) continue
           const us = noteUserScalesRef.current.get(note.id) ?? (note.note_scale ?? 1)
-          applyNoteTransform(el, zoom, true, us)
+          applyInnerScale(el, zoom, true, us)
         }
       })
 
@@ -225,7 +230,7 @@ export default function RouteMap({
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !L) return
     const map = mapInstanceRef.current
-    const Lx = L
+    const Lx  = L
 
     markersRef.current.forEach(m => m.remove())
     markersRef.current = []
@@ -237,7 +242,7 @@ export default function RouteMap({
       const sel  = stop.id === selectedStopId
       const stay = stop.is_stay ?? false
       const bg     = (sel || stay) ? '#2563eb' : '#1e40af'
-      const border = sel  ? '#93c5fd' : stay ? '#f59e0b' : 'white'
+      const border = sel ? '#93c5fd' : stay ? '#f59e0b' : 'white'
       const scale  = sel ? 'scale(1.25)' : stay ? 'scale(1.1)' : 'none'
       const shadow = stay ? '0 2px 8px rgba(37,99,235,0.5)' : '0 2px 6px rgba(0,0,0,0.3)'
       const icon = Lx.divIcon({
@@ -355,10 +360,9 @@ export default function RouteMap({
   // ── Map notes ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !L) return
-    const Lx = L
+    const Lx  = L
     const map = mapInstanceRef.current
 
-    // Remove old markers
     noteMarkersRef.current.forEach(m => m.remove())
     noteMarkersRef.current.clear()
     noteUserScalesRef.current.clear()
@@ -369,69 +373,62 @@ export default function RouteMap({
       const userScale = note.note_scale ?? 1
       noteUserScalesRef.current.set(note.id, userScale)
 
-      const icon = buildNoteIcon(Lx, note, canEditNotes ?? false)
+      const icon   = buildNoteIcon(Lx, note, canEditNotes ?? false)
       const marker = Lx.marker([note.lat, note.lng], {
         icon,
         zIndexOffset: 500,
         draggable: canEditNotes ?? false,
       }).addTo(map)
 
-      // Apply initial transform immediately after addTo (element is in DOM)
-      const el = marker.getElement()
-      if (el) {
-        applyNoteTransform(el, currentZoom, note.is_zoom_relative, userScale)
+      // Apply initial scale to the inner div immediately after addTo()
+      // (Leaflet creates the DOM element synchronously in addTo)
+      const outerEl = marker.getElement()
+      if (outerEl) {
+        applyInnerScale(outerEl, currentZoom, note.is_zoom_relative, userScale)
       }
 
-      // Click handler
       marker.on('click', (e) => {
         Lx.DomEvent.stopPropagation(e)
         onNoteClickRef.current?.(note, e.originalEvent.clientX, e.originalEvent.clientY)
       })
 
-      // Drag-to-move handler
       marker.on('dragend', () => {
         const { lat, lng } = marker.getLatLng()
         onNoteMoveRef.current?.(note.id, lat, lng)
       })
 
-      // ── Resize handle ─────────────────────────────────────────────────
-      // The handle is a corner div inside the icon HTML.
-      // On mousedown we track X-delta and update the CSS transform scale live.
-      // On mouseup we persist the new user scale to DB via the callback.
-      if (canEditNotes && el) {
-        const handle = el.querySelector('[data-resize-handle]') as HTMLElement | null
+      // ── Resize handle ───────────────────────────────────────────────────
+      if (canEditNotes && outerEl) {
+        const handle = outerEl.querySelector('[data-resize-handle]') as HTMLElement | null
         if (handle) {
-          // Prevent map drag when interacting with the handle
+          // Prevent marker click and map drag from firing during resize
           Lx.DomEvent.disableClickPropagation(handle)
 
           handle.addEventListener('mousedown', (e: MouseEvent) => {
             e.preventDefault()
             e.stopPropagation()
 
-            const startX = e.clientX
-            const startScale = noteUserScalesRef.current.get(note.id) ?? 1
-            // startVisualW is the current visual width of the note content div
+            const startX      = e.clientX
+            const startScale  = noteUserScalesRef.current.get(note.id) ?? 1
             const startVisualW = NOTE_W * startScale
 
             const onMove = (ev: MouseEvent) => {
-              const delta = ev.clientX - startX
-              const newW = Math.max(60, startVisualW + delta)
-              const newUserScale = newW / NOTE_W
-              noteUserScalesRef.current.set(note.id, newUserScale)
-              const markerEl = marker.getElement()
-              if (markerEl) {
-                applyNoteTransform(markerEl, map.getZoom(), note.is_zoom_relative, newUserScale)
-              }
+              const delta       = ev.clientX - startX
+              const newW        = Math.max(60, startVisualW + delta)
+              const newScale    = newW / NOTE_W
+              noteUserScalesRef.current.set(note.id, newScale)
+              const el = marker.getElement()
+              if (el) applyInnerScale(el, map.getZoom(), note.is_zoom_relative, newScale)
             }
 
             const onUp = (ev: MouseEvent) => {
               document.removeEventListener('mousemove', onMove)
               document.removeEventListener('mouseup', onUp)
-              const delta = ev.clientX - startX
-              const newW = Math.max(60, startVisualW + delta)
-              const newUserScale = newW / NOTE_W
-              noteUserScalesRef.current.set(note.id, newUserScale)
-              onNoteScaleChangeRef.current?.(note.id, newUserScale)
+              const delta    = ev.clientX - startX
+              const newW     = Math.max(60, startVisualW + delta)
+              const newScale = newW / NOTE_W
+              noteUserScalesRef.current.set(note.id, newScale)
+              onNoteScaleChangeRef.current?.(note.id, newScale)
             }
 
             document.addEventListener('mousemove', onMove)
